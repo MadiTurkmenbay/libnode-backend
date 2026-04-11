@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Book> Books => Set<Book>();
     public DbSet<Chapter> Chapters => Set<Chapter>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,6 +73,38 @@ public class AppDbContext : DbContext
             // Составной индекс для быстрой выборки глав книги по порядку
             entity.HasIndex(c => new { c.BookId, c.ChapterNumber })
                   .IsUnique();
+        });
+
+        // ── User ────────────────────────────────────────
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(u => u.Id);
+
+            entity.Property(u => u.Id)
+                  .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(u => u.Username)
+                  .IsRequired()
+                  .HasMaxLength(50);
+
+            entity.Property(u => u.Email)
+                  .IsRequired()
+                  .HasMaxLength(256);
+
+            entity.Property(u => u.PasswordHash)
+                  .IsRequired();
+
+            entity.Property(u => u.Role)
+                  .IsRequired()
+                  .HasMaxLength(20)
+                  .HasDefaultValue("User");
+
+            entity.Property(u => u.CreatedAt)
+                  .HasDefaultValueSql("now()");
+
+            // Уникальные индексы
+            entity.HasIndex(u => u.Email).IsUnique();
+            entity.HasIndex(u => u.Username).IsUnique();
         });
     }
 }

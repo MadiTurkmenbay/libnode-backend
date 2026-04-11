@@ -1,6 +1,7 @@
 using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LibNode.Api.Controllers;
@@ -65,6 +66,7 @@ public class BooksController : ControllerBase
     /// <response code="201">Книга успешно создана.</response>
     /// <response code="400">Невалидные данные.</response>
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(BookDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateBookDto dto, CancellationToken ct)

@@ -1,6 +1,7 @@
 using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LibNode.Api.Controllers;
@@ -59,6 +60,7 @@ public class ChaptersController : ControllerBase
     /// Создать новую главу.
     /// </summary>
     [HttpPost("api/chapters")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ChapterDetailDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateChapterDto dto, CancellationToken ct)
