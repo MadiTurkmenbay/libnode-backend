@@ -13,6 +13,8 @@ public class AppDbContext : DbContext
     public DbSet<Book> Books => Set<Book>();
     public DbSet<Chapter> Chapters => Set<Chapter>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserCollection> UserCollections => Set<UserCollection>();
+    public DbSet<CollectionBook> CollectionBooks => Set<CollectionBook>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,6 +107,50 @@ public class AppDbContext : DbContext
             // Уникальные индексы
             entity.HasIndex(u => u.Email).IsUnique();
             entity.HasIndex(u => u.Username).IsUnique();
+        });
+
+        // ── UserCollection ──────────────────────────────
+        modelBuilder.Entity<UserCollection>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+
+            entity.Property(c => c.Id)
+                  .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(c => c.Name)
+                  .IsRequired()
+                  .HasMaxLength(150);
+
+            entity.Property(c => c.CreatedAt)
+                  .HasDefaultValueSql("now()");
+
+            // FK: UserCollection.UserId → User.Id (CASCADE DELETE)
+            entity.HasOne(c => c.User)
+                  .WithMany(u => u.Collections)
+                  .HasForeignKey(c => c.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── CollectionBook ──────────────────────────────
+        modelBuilder.Entity<CollectionBook>(entity =>
+        {
+            // Составной первичный ключ
+            entity.HasKey(cb => new { cb.CollectionId, cb.BookId });
+
+            entity.Property(cb => cb.AddedAt)
+                  .HasDefaultValueSql("now()");
+
+            // FK: CollectionBook.CollectionId → UserCollection.Id
+            entity.HasOne(cb => cb.Collection)
+                  .WithMany(c => c.CollectionBooks)
+                  .HasForeignKey(cb => cb.CollectionId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // FK: CollectionBook.BookId → Book.Id
+            entity.HasOne(cb => cb.Book)
+                  .WithMany(b => b.CollectionBooks)
+                  .HasForeignKey(cb => cb.BookId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -22,4 +22,7 @@ public class Book
     // ── Navigation ──────────────────────────────────────
     /// <summary>Главы, привязанные к книге (1 : N).</summary>
     public ICollection<Chapter> Chapters { get; set; } = new List<Chapter>();
+
+    /// <summary>Вхождение книги в коллекции пользователей.</summary>
+    public ICollection<CollectionBook> CollectionBooks { get; set; } = new List<CollectionBook>();
 }

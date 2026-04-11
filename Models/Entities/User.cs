@@ -20,4 +20,7 @@ public class User
     public string Role { get; set; } = "User";
 
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>Пользовательские коллекции книг.</summary>
+    public ICollection<UserCollection> Collections { get; set; } = new List<UserCollection>();
 }
