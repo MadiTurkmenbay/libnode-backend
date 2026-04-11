@@ -1,0 +1,19 @@
+using LibNode.Api.Models.Common;
+using LibNode.Api.Models.DTOs;
+
+namespace LibNode.Api.Services;
+
+/// <summary>
+/// Контракт сервиса для работы с главами.
+/// </summary>
+public interface IChapterService
+{
+    /// <summary>Получить список глав книги с пагинацией (без текста).</summary>
+    Task<PagedResult<ChapterListDto>> GetByBookIdAsync(Guid bookId, int pageNumber, int pageSize, CancellationToken ct = default);
+
+    /// <summary>Получить конкретную главу (с текстом).</summary>
+    Task<ChapterDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Добавить новую главу.</summary>
+    Task<ChapterDetailDto> CreateAsync(CreateChapterDto dto, CancellationToken ct = default);
+}
