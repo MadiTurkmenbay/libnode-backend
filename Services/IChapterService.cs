@@ -9,11 +9,14 @@ namespace LibNode.Api.Services;
 public interface IChapterService
 {
     /// <summary>Получить список глав книги с пагинацией (без текста).</summary>
-    Task<PagedResult<ChapterListDto>> GetByBookIdAsync(Guid bookId, int pageNumber, int pageSize, CancellationToken ct = default);
+    Task<PagedResult<ChapterListDto>> GetByBookIdAsync(Guid bookId, int pageNumber, int pageSize, Guid? userId = null, CancellationToken ct = default);
 
     /// <summary>Получить конкретную главу (с текстом).</summary>
-    Task<ChapterDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<ChapterDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default);
 
     /// <summary>Добавить новую главу.</summary>
     Task<ChapterDetailDto> CreateAsync(CreateChapterDto dto, CancellationToken ct = default);
+
+    /// <summary>Лайкнуть главу.</summary>
+    Task LikeChapterAsync(Guid chapterId, Guid userId, CancellationToken ct = default);
 }

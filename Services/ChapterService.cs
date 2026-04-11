@@ -18,7 +18,7 @@ public class ChapterService : IChapterService
         _db = db;
     }
 
-    public async Task<PagedResult<ChapterListDto>> GetByBookIdAsync(Guid bookId, int pageNumber, int pageSize, CancellationToken ct = default)
+    public async Task<PagedResult<ChapterListDto>> GetByBookIdAsync(Guid bookId, int pageNumber, int pageSize, Guid? userId = null, CancellationToken ct = default)
     {
         var query = _db.Chapters
             .AsNoTracking()
@@ -35,14 +35,16 @@ public class ChapterService : IChapterService
                 c.BookId,
                 c.Title,
                 c.ChapterNumber,
-                c.CreatedAt
+                c.CreatedAt,
+                c.Likes.Count(),
+                userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value)
             ))
             .ToListAsync(ct);
 
         return new PagedResult<ChapterListDto>(items, totalCount, pageNumber, pageSize);
     }
 
-    public async Task<ChapterDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<ChapterDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)
     {
         return await _db.Chapters
             .AsNoTracking()
@@ -53,7 +55,9 @@ public class ChapterService : IChapterService
                 c.Title,
                 c.Content,
                 c.ChapterNumber,
-                c.CreatedAt
+                c.CreatedAt,
+                c.Likes.Count(),
+                userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value)
             ))
             .FirstOrDefaultAsync(ct);
     }
@@ -83,7 +87,32 @@ public class ChapterService : IChapterService
             chapter.Title,
             chapter.Content,
             chapter.ChapterNumber,
-            chapter.CreatedAt
+            chapter.CreatedAt,
+            0,
+            false
         );
+    }
+
+    public async Task LikeChapterAsync(Guid chapterId, Guid userId, CancellationToken ct = default)
+    {
+        // Проверяем, есть ли такая глава
+        var chapterExists = await _db.Chapters.AnyAsync(c => c.Id == chapterId, ct);
+        if (!chapterExists)
+            throw new ArgumentException($"Глава с Id {chapterId} не найдена.");
+
+        // Проверяем, ставил ли юзер уже лайк
+        var alreadyLiked = await _db.ChapterLikes.AnyAsync(cl => cl.ChapterId == chapterId && cl.UserId == userId, ct);
+        if (alreadyLiked)
+            return; // Идемпотентность
+
+        var like = new ChapterLike
+        {
+            ChapterId = chapterId,
+            UserId = userId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.ChapterLikes.Add(like);
+        await _db.SaveChangesAsync(ct);
     }
 }

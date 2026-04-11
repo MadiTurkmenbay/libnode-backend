@@ -24,4 +24,7 @@ public class Chapter
     // ── Navigation ──────────────────────────────────────
     /// <summary>Родительская книга.</summary>
     public Book Book { get; set; } = null!;
+
+    /// <summary>Лайки главы.</summary>
+    public ICollection<ChapterLike> Likes { get; set; } = new List<ChapterLike>();
 }

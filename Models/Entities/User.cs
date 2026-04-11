@@ -23,4 +23,7 @@ public class User
 
     /// <summary>Пользовательские коллекции книг.</summary>
     public ICollection<UserCollection> Collections { get; set; } = new List<UserCollection>();
+
+    /// <summary>Лайки глав.</summary>
+    public ICollection<ChapterLike> ChapterLikes { get; set; } = new List<ChapterLike>();
 }

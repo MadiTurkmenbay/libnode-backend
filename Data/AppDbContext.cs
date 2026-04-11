@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<UserCollection> UserCollections => Set<UserCollection>();
     public DbSet<CollectionBook> CollectionBooks => Set<CollectionBook>();
+    public DbSet<ChapterLike> ChapterLikes => Set<ChapterLike>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,6 +151,28 @@ public class AppDbContext : DbContext
             entity.HasOne(cb => cb.Book)
                   .WithMany(b => b.CollectionBooks)
                   .HasForeignKey(cb => cb.BookId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── ChapterLike ─────────────────────────────────────────
+        modelBuilder.Entity<ChapterLike>(entity =>
+        {
+            // Составной первичный ключ
+            entity.HasKey(cl => new { cl.UserId, cl.ChapterId });
+
+            entity.Property(cl => cl.CreatedAt)
+                  .HasDefaultValueSql("now()");
+
+            // FK: ChapterLike.UserId → User.Id
+            entity.HasOne(cl => cl.User)
+                  .WithMany(u => u.ChapterLikes)
+                  .HasForeignKey(cl => cl.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // FK: ChapterLike.ChapterId → Chapter.Id
+            entity.HasOne(cl => cl.Chapter)
+                  .WithMany(c => c.Likes)
+                  .HasForeignKey(cl => cl.ChapterId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

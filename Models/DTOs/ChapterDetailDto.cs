@@ -9,5 +9,7 @@ public record ChapterDetailDto(
     string Title,
     string Content,
     int ChapterNumber,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    int LikesCount,
+    bool IsLikedByCurrentUser
 );

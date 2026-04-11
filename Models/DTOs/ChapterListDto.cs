@@ -8,5 +8,7 @@ public record ChapterListDto(
     Guid BookId,
     string Title,
     int ChapterNumber,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    int LikesCount,
+    bool IsLikedByCurrentUser
 );
