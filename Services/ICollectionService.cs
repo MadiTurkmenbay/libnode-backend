@@ -8,7 +8,7 @@ public interface ICollectionService
     Task<IEnumerable<CollectionDto>> GetUserCollectionsAsync(Guid userId);
     Task<CollectionDetailDto?> GetCollectionByIdAsync(Guid collectionId, Guid userId);
     Task<IEnumerable<Guid>> GetCollectionIdsWithBookAsync(Guid bookId, Guid userId);
-    Task AddBookToCollectionAsync(Guid collectionId, Guid bookId, Guid userId);
+    Task AddBookToCollectionAsync(Guid collectionId, Guid bookId, Guid userId, CancellationToken ct = default);
     Task RemoveBookFromCollectionAsync(Guid collectionId, Guid bookId, Guid userId);
     Task<BookCollectionStatusDto?> GetBookCollectionStatusAsync(Guid bookId, Guid userId);
 }

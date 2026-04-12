@@ -6,6 +6,7 @@ using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 
 namespace LibNode.Api.Services;
 
@@ -26,14 +27,6 @@ public class AuthService : IAuthService
     /// <inheritdoc />
     public async Task<AuthResponseDto> RegisterAsync(CreateUserDto dto, CancellationToken ct = default)
     {
-        // Проверка уникальности email
-        if (await _db.Users.AnyAsync(u => u.Email == dto.Email, ct))
-            throw new InvalidOperationException("Пользователь с таким email уже существует.");
-
-        // Проверка уникальности username
-        if (await _db.Users.AnyAsync(u => u.Username == dto.Username, ct))
-            throw new InvalidOperationException("Пользователь с таким именем уже существует.");
-
         var user = new User
         {
             Username = dto.Username,
@@ -42,8 +35,17 @@ public class AuthService : IAuthService
             Role = "User"
         };
 
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            throw new InvalidOperationException(
+                "Пользователь с таким email или именем уже существует.",
+                ex);
+        }
 
         var token = GenerateJwtToken(user);
         return new AuthResponseDto(token, MapToDto(user));
@@ -96,4 +98,8 @@ public class AuthService : IAuthService
 
     private static UserDto MapToDto(User user) =>
         new(user.Id, user.Username, user.Email, user.Role);
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException postgresException
+        && postgresException.SqlState == PostgresErrorCodes.UniqueViolation;
 }

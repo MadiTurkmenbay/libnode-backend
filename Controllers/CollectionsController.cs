@@ -64,11 +64,11 @@ public class CollectionsController : ControllerBase
     }
 
     [HttpPost("{id}/books")]
-    public async Task<IActionResult> AddBookToCollection(Guid id, [FromBody] AddBookToCollectionDto dto)
+    public async Task<IActionResult> AddBookToCollection(Guid id, [FromBody] AddBookToCollectionDto dto, CancellationToken ct)
     {
         try
         {
-            await _collectionService.AddBookToCollectionAsync(id, dto.BookId, GetUserId());
+            await _collectionService.AddBookToCollectionAsync(id, dto.BookId, GetUserId(), ct);
             return Ok();
         }
         catch (UnauthorizedAccessException)

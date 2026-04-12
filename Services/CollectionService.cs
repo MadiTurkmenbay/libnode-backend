@@ -86,17 +86,19 @@ public class CollectionService : ICollectionService
             .ToListAsync();
     }
 
-    public async Task AddBookToCollectionAsync(Guid collectionId, Guid bookId, Guid userId)
+    public async Task AddBookToCollectionAsync(Guid collectionId, Guid bookId, Guid userId, CancellationToken ct = default)
     {
         var collection = await _context.UserCollections
-            .FirstOrDefaultAsync(c => c.Id == collectionId && c.UserId == userId);
+            .FirstOrDefaultAsync(c => c.Id == collectionId && c.UserId == userId, ct);
 
         if (collection == null)
             throw new UnauthorizedAccessException("Collection not found or access denied.");
 
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
         var existingLinks = await _context.CollectionBooks
             .Where(cb => cb.BookId == bookId && cb.Collection!.UserId == userId)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         _context.CollectionBooks.RemoveRange(existingLinks);
 
@@ -111,7 +113,8 @@ public class CollectionService : ICollectionService
             });
         }
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task RemoveBookFromCollectionAsync(Guid collectionId, Guid bookId, Guid userId)

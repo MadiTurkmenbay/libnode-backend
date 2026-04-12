@@ -3,6 +3,7 @@ using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace LibNode.Api.Services;
 
@@ -117,18 +118,24 @@ public class ChapterService : IChapterService
         if (!chapterExists)
             throw new ArgumentException($"Глава с Id {chapterId} не найдена.");
 
-        // Проверяем, ставил ли юзер уже лайк
-        var alreadyLiked = await _db.ChapterLikes.AnyAsync(cl => cl.ChapterId == chapterId && cl.UserId == userId, ct);
-        if (alreadyLiked)
-            return; // Идемпотентность
-
         var like = new ChapterLike
         {
             ChapterId = chapterId,
             UserId = userId
         };
 
-        _db.ChapterLikes.Add(like);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            _db.ChapterLikes.Add(like);
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            // Идемпотентность: юзер уже поставил лайк.
+        }
     }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException postgresException
+        && postgresException.SqlState == PostgresErrorCodes.UniqueViolation;
 }

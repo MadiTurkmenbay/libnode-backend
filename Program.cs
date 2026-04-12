@@ -8,22 +8,41 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Connection string 'DefaultConnection' is not configured. Set it via configuration or the ConnectionStrings__DefaultConnection environment variable.");
+}
+
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:Origins")
+    .Get<string[]>()?
+    .Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+
+if (allowedOrigins is null || allowedOrigins.Length == 0)
+{
+    allowedOrigins = ["http://localhost:3000"];
+}
 
 // ── Services ────────────────────────────────────────────────────────────────
 
-// CORS (Разрешаем запросы с фронтенда)
+// CORS (разрешаем запросы только с доверенных frontend origins)
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("FrontendOrigins", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
 });
 // DbContext → PostgreSQL
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 // Бизнес-логика (Scoped = по одному экземпляру на HTTP-запрос)
 builder.Services.AddScoped<IBookService, BookService>();
@@ -34,7 +53,15 @@ builder.Services.AddScoped<ICollectionService, CollectionService>();
 // ── JWT Authentication ──────────────────────────────────────────────────────
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var key = Encoding.UTF8.GetBytes(jwtSettings["Key"]!);
+var jwtKey = jwtSettings["Key"];
+
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    throw new InvalidOperationException(
+        "JWT signing key is not configured. Set it via configuration or the JwtSettings__Key environment variable.");
+}
+
+var key = Encoding.UTF8.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -114,9 +141,12 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseMiddleware<GlobalExceptionMiddleware>();
-app.UseCors("AllowAll");
+app.UseCors("FrontendOrigins");
 app.UseAuthentication(); // ← ПЕРЕД UseAuthorization
 app.UseAuthorization();
 app.MapControllers();
