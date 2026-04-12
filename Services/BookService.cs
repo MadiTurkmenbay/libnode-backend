@@ -47,15 +47,11 @@ public class BookService : IBookService
     /// <inheritdoc />
     public async Task<BookDto> CreateAsync(CreateBookDto dto, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
-
         var book = new Book
         {
             Title = dto.Title,
             Description = dto.Description,
-            CoverUrl = dto.CoverUrl,
-            CreatedAt = now,
-            UpdatedAt = now
+            CoverUrl = dto.CoverUrl
         };
 
         _db.Books.Add(book);

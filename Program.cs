@@ -1,5 +1,6 @@
 using System.Text;
 using LibNode.Api.Data;
+using LibNode.Api.Middlewares;
 using LibNode.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -114,6 +115,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors("AllowAll");
 app.UseAuthentication(); // ← ПЕРЕД UseAuthorization
 app.UseAuthorization();

@@ -74,8 +74,7 @@ public class ChapterService : IChapterService
             BookId = dto.BookId,
             Title = dto.Title,
             Content = dto.Content,
-            ChapterNumber = dto.ChapterNumber,
-            CreatedAt = DateTime.UtcNow
+            ChapterNumber = dto.ChapterNumber
         };
 
         _db.Chapters.Add(chapter);
@@ -108,8 +107,7 @@ public class ChapterService : IChapterService
         var like = new ChapterLike
         {
             ChapterId = chapterId,
-            UserId = userId,
-            CreatedAt = DateTime.UtcNow
+            UserId = userId
         };
 
         _db.ChapterLikes.Add(like);

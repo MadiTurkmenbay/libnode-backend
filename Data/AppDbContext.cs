@@ -176,4 +176,66 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
+
+    public override int SaveChanges()
+    {
+        AddAuditInfo();
+        return base.SaveChanges();
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        AddAuditInfo();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        AddAuditInfo();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        AddAuditInfo();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void AddAuditInfo()
+    {
+        var entries = ChangeTracker.Entries().Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
+        var now = DateTime.UtcNow;
+
+        foreach (var entry in entries)
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var createdAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "CreatedAt");
+                if (createdAtProp != null)
+                {
+                    createdAtProp.CurrentValue = now;
+                }
+
+                var addedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "AddedAt");
+                if (addedAtProp != null)
+                {
+                    addedAtProp.CurrentValue = now;
+                }
+
+                var updatedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt");
+                if (updatedAtProp != null)
+                {
+                    updatedAtProp.CurrentValue = now;
+                }
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                var updatedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt");
+                if (updatedAtProp != null)
+                {
+                    updatedAtProp.CurrentValue = now;
+                }
+            }
+        }
+    }
 }
