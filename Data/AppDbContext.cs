@@ -210,6 +210,13 @@ public class AppDbContext : DbContext
         {
             if (entry.State == EntityState.Added)
             {
+                // Генерация UUIDv7 для новых сущностей с пустым Guid-ключом
+                var idProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Id");
+                if (idProp != null && idProp.CurrentValue is Guid guidValue && guidValue == Guid.Empty)
+                {
+                    idProp.CurrentValue = Guid.CreateVersion7();
+                }
+
                 var createdAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "CreatedAt");
                 if (createdAtProp != null)
                 {

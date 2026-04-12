@@ -19,19 +19,32 @@ public class BookService : IBookService
     }
 
     /// <inheritdoc />
-    public async Task<PagedResult<BookDto>> GetAllAsync(int pageNumber, int pageSize, CancellationToken ct = default)
+    public async Task<CursorPagedResult<BookDto>> GetAllAsync(Guid? cursor, int limit = 20, CancellationToken ct = default)
     {
         var query = _db.Books.AsNoTracking();
-        var totalCount = await query.CountAsync(ct);
 
+        if (cursor.HasValue)
+        {
+            query = query.Where(b => b.Id < cursor.Value);
+        }
+
+        // Запрашиваем limit + 1 для определения HasMore
         var items = await query
-            .OrderByDescending(b => b.UpdatedAt)
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
+            .OrderByDescending(b => b.Id)
+            .Take(limit + 1)
             .Select(b => MapToDto(b))
             .ToListAsync(ct);
 
-        return new PagedResult<BookDto>(items, totalCount, pageNumber, pageSize);
+        var hasMore = items.Count > limit;
+
+        if (hasMore)
+        {
+            items.RemoveAt(items.Count - 1);
+        }
+
+        var nextCursor = hasMore ? items[^1].Id : (Guid?)null;
+
+        return new CursorPagedResult<BookDto>(items, nextCursor, hasMore);
     }
 
     /// <inheritdoc />

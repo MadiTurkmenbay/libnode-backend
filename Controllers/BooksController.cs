@@ -22,21 +22,22 @@ public class BooksController : ControllerBase
     }
 
     /// <summary>
-    /// Получить список всех книг.
+    /// Получить список книг с курсорной пагинацией.
     /// </summary>
+    /// <param name="cursor">ID последнего элемента из предыдущей страницы (null для первой страницы).</param>
+    /// <param name="limit">Количество элементов на страницу (1-100, по умолчанию 20).</param>
     /// <response code="200">Список книг.</response>
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResult<BookDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CursorPagedResult<BookDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
-        [FromQuery] int pageNumber = 1, 
-        [FromQuery] int pageSize = 20, 
+        [FromQuery] Guid? cursor = null,
+        [FromQuery] int limit = 20,
         CancellationToken ct = default)
     {
-        if (pageNumber < 1) pageNumber = 1;
-        if (pageSize < 1) pageSize = 20;
-        if (pageSize > 100) pageSize = 100;
+        if (limit < 1) limit = 20;
+        if (limit > 100) limit = 100;
 
-        var books = await _bookService.GetAllAsync(pageNumber, pageSize, ct);
+        var books = await _bookService.GetAllAsync(cursor, limit, ct);
         return Ok(books);
     }
 
