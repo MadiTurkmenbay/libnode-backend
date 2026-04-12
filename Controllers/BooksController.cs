@@ -28,7 +28,7 @@ public class BooksController : ControllerBase
     /// <param name="limit">Количество элементов на страницу (1-100, по умолчанию 20).</param>
     /// <response code="200">Список книг.</response>
     [HttpGet]
-    [ProducesResponseType(typeof(CursorPagedResult<BookDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CursorPagedResult<BookDto, Guid>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
         [FromQuery] Guid? cursor = null,
         [FromQuery] int limit = 20,

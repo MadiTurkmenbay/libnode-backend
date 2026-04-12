@@ -19,7 +19,7 @@ public class BookService : IBookService
     }
 
     /// <inheritdoc />
-    public async Task<CursorPagedResult<BookDto>> GetAllAsync(Guid? cursor, int limit = 20, CancellationToken ct = default)
+    public async Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(Guid? cursor, int limit = 20, CancellationToken ct = default)
     {
         var query = _db.Books.AsNoTracking();
 
@@ -44,7 +44,7 @@ public class BookService : IBookService
 
         var nextCursor = hasMore ? items[^1].Id : (Guid?)null;
 
-        return new CursorPagedResult<BookDto>(items, nextCursor, hasMore);
+        return new CursorPagedResult<BookDto, Guid>(items, nextCursor, hasMore);
     }
 
     /// <inheritdoc />

@@ -18,18 +18,27 @@ public class ChapterService : IChapterService
         _db = db;
     }
 
-    public async Task<PagedResult<ChapterListDto>> GetByBookIdAsync(Guid bookId, int pageNumber, int pageSize, Guid? userId = null, CancellationToken ct = default)
+    public async Task<CursorPagedResult<ChapterListDto, int>> GetByBookIdAsync(Guid bookId, int? cursor, int limit = 50, bool sortDesc = true, Guid? userId = null, CancellationToken ct = default)
     {
         var query = _db.Chapters
             .AsNoTracking()
             .Where(c => c.BookId == bookId);
 
-        var totalCount = await query.CountAsync(ct);
+        // Курсорная фильтрация по ChapterNumber
+        if (cursor.HasValue)
+        {
+            query = sortDesc
+                ? query.Where(c => c.ChapterNumber < cursor.Value)
+                : query.Where(c => c.ChapterNumber > cursor.Value);
+        }
 
-        var items = await query
-            .OrderBy(c => c.ChapterNumber)
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
+        // Сортировка и лимит (limit + 1 для определения HasMore)
+        var orderedQuery = sortDesc
+            ? query.OrderByDescending(c => c.ChapterNumber)
+            : query.OrderBy(c => c.ChapterNumber);
+
+        var items = await orderedQuery
+            .Take(limit + 1)
             .Select(c => new ChapterListDto(
                 c.Id,
                 c.BookId,
@@ -41,7 +50,16 @@ public class ChapterService : IChapterService
             ))
             .ToListAsync(ct);
 
-        return new PagedResult<ChapterListDto>(items, totalCount, pageNumber, pageSize);
+        var hasMore = items.Count > limit;
+
+        if (hasMore)
+        {
+            items.RemoveAt(items.Count - 1);
+        }
+
+        var nextCursor = hasMore ? items[^1].ChapterNumber : (int?)null;
+
+        return new CursorPagedResult<ChapterListDto, int>(items, nextCursor, hasMore);
     }
 
     public async Task<ChapterDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)

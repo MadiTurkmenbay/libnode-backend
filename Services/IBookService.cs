@@ -9,7 +9,7 @@ namespace LibNode.Api.Services;
 public interface IBookService
 {
     /// <summary>Получить список книг с курсорной пагинацией (новые → старые).</summary>
-    Task<CursorPagedResult<BookDto>> GetAllAsync(Guid? cursor, int limit = 20, CancellationToken ct = default);
+    Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(Guid? cursor, int limit = 20, CancellationToken ct = default);
 
     /// <summary>Получить книгу по ID. Возвращает null, если не найдена.</summary>
     Task<BookDto?> GetByIdAsync(Guid id, CancellationToken ct = default);

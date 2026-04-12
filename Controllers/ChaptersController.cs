@@ -22,20 +22,23 @@ public class ChaptersController : ControllerBase
     }
 
     /// <summary>
-    /// Получить список глав для конкретной книги.
+    /// Получить список глав для конкретной книги с курсорной пагинацией.
     /// </summary>
+    /// <param name="bookId">GUID книги.</param>
+    /// <param name="cursor">Номер последней главы из предыдущей страницы (null для первой страницы).</param>
+    /// <param name="limit">Количество элементов на страницу (1-100, по умолчанию 50).</param>
+    /// <param name="sortDesc">true — от новых к старым, false — от старых к новым.</param>
     [HttpGet("api/books/{bookId:guid}/chapters")]
-    [ProducesResponseType(typeof(PagedResult<ChapterListDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CursorPagedResult<ChapterListDto, int>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetByBookId(
-        Guid bookId, 
-        [FromQuery] int pageNumber = 1, 
-        [FromQuery] int pageSize = 20, 
+        Guid bookId,
+        [FromQuery] int? cursor = null,
+        [FromQuery] int limit = 50,
+        [FromQuery] bool sortDesc = true,
         CancellationToken ct = default)
     {
-        // Базовая валидация
-        if (pageNumber < 1) pageNumber = 1;
-        if (pageSize < 1) pageSize = 20;
-        if (pageSize > 100) pageSize = 100; // ограничение на максимальный размер страницы
+        if (limit < 1) limit = 50;
+        if (limit > 100) limit = 100;
 
         Guid? userId = null;
         if (User.Identity?.IsAuthenticated == true)
@@ -47,7 +50,7 @@ public class ChaptersController : ControllerBase
             }
         }
 
-        var result = await _chapterService.GetByBookIdAsync(bookId, pageNumber, pageSize, userId, ct);
+        var result = await _chapterService.GetByBookIdAsync(bookId, cursor, limit, sortDesc, userId, ct);
         return Ok(result);
     }
 
