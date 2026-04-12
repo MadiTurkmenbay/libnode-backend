@@ -1,33 +1,87 @@
-# ИНСТРУКЦИЯ ДЛЯ AI АГЕНТОВ (Бэкенд - C# .NET 10)
+# AI_INSTRUCTIONS — libnode backend
 
-## Описание
-Бэкенд проекта LibNode. Построен на .NET 10, использует Entity Framework Core (PostgreSQL) в качестве ORM.
+## Контекст
+Backend LibNode написан на `.NET 10`, использует `ASP.NET Core`, `EF Core`, `PostgreSQL`, JWT-аутентификацию и сервисную архитектуру без лишних промежуточных абстракций.
 
-## Архитектура и Структура папок
-Строго соблюдай разделение ответственности. При создании новых фич всегда распределяй файлы по этим слоям:
+## Базовая архитектура
 
-- `Controllers/` — REST API контроллеры. Отвечают **только** за прием HTTP запросов, валидацию входных параметров и возврат HTTP ответов (Ok, NotFound, BadRequest). Не должны содержать бизнес-логику! Вызывают методы интерфейсов из папки `Services`.
-- `Services/` — Слой бизнес-логики. Здесь находятся интерфейсы (`I*Service.cs`) и их реализации. Вся сложная логика, проверки доступа (кроме атрибутов) и взаимодействие с БД происходит тут. Сервисы регистрируются в DI как `Scoped`.
-- `Middlewares/` — Пользовательские слои для обработки HTTP-пайплайна. Например, `GlobalExceptionMiddleware` для перехвата неконтролируемых исключений.
-- `Data/` — Слой доступа к данным. Содержит `AppDbContext.cs`. Конфигурация БД производится через Fluent API в методе `OnModelCreating`.
-- `Models/Entities/` — ORM Модели базы данных (вкл. UserCollection, CollectionBook и др.).
-- `Models/DTOs/` — Data Transfer Objects. Объекты для передачи данных между клиентом и сервером (`*Dto.cs`, `Create*Dto.cs`). Запрещено возвращать Entities напрямую из контроллеров.
-- `Models/Common/` — Общие модели (например, `PagedResult` для пагинации).
-- `Migrations/` — Папка для миграций EF Core. Редактируется только автоматически через `dotnet ef`.
+### Слои и ответственность
 
-## Основные паттерны проекта
-1. **Аутентификация & RBAC**: JWT токены (Bearer). Токены выдает `AuthService`. Контроллеры защищаются атрибутами `[Authorize]` и `[Authorize(Roles = "Admin")]`.
-2. **Безопасность паролей**: Используем `BCrypt.Net-Next`.
-3. **Пагинация**: Курсорная пагинация через `CursorPagedResult<T, TCursor>` с параметрами `cursor` и `limit`. Для каталога книг `TCursor` это `Guid?`, и сортировка идет по `Id` (благодаря генерации UUIDv7). Сортировка списка глав (`ChapterNumber`) использует `int?`. Старый `PagedResult<T>` (offset) сохранен для совместимости.
-4. **Валидация**: Релизована через `System.ComponentModel.DataAnnotations` в DTO объектах.
-5. **Взаимоисключающие коллекции**: Книга может находиться только в одной коллекции пользователя. При добавлении книги в коллекцию (`AddBookToCollectionAsync`) сервис автоматически удаляет ее из всех других коллекций пользователя.
-6. **Статус коллекции книги**: Для проверки, в какой коллекции находится книга, используйте эндпоинт `GET /api/books/{bookId}/collection-status` и метод `GetBookCollectionStatusAsync`. Возвращает `BookCollectionStatusDto` или `null`.
+- [CRITICAL] `Controllers/` принимают HTTP-запрос, читают route/query/body, навешивают `[Authorize]`, валидируют вход через DTO и возвращают HTTP-ответ. Контроллеры не содержат бизнес-логику, SQL, транзакции и прямую работу с `DbContext`.
+- [CRITICAL] `Services/` — единственное место для бизнес-логики, инвариантов, доступа к данным, транзакций, идемпотентности и проверок владения ресурсами.
+- [CRITICAL] `Data/AppDbContext.cs` — единственный источник истины для EF-конфигурации, индексов, ограничений, каскадов, UUIDv7 и audit-полей.
+- [MANDATORY] `Models/Entities` — только ORM-сущности. `Models/DTOs` — только публичные контракты API. Возвращать Entity наружу запрещено.
+- [FORBIDDEN] Вводить repository layer, generic repository, unit of work wrapper, mediator-обвязку или “helper service” поверх уже существующей схемы `Controller -> Service -> AppDbContext`, если это не продиктовано реальной архитектурной причиной.
 
-## Безопасность конфигурации и транзакции
-- **Секреты**: Не храним реальные `ConnectionStrings` и `JwtSettings:Key` в `appsettings*.json`. В репозитории допускаются только пустые заглушки. Реальные значения приходят через environment variables (`ConnectionStrings__DefaultConnection`, `JwtSettings__Key`).
-- **CORS**: Нельзя использовать `AllowAnyOrigin()` в боевом коде. Разрешенные frontend origins читаются из конфигурации (`Cors:Origins` / `Cors__Origins__*`). Если конфигурация не задана, безопасный fallback — только `http://localhost:3000`.
-- **Race conditions**: Для операций с уникальными ограничениями не делаем предварительные `AnyAsync` перед вставкой. Полагаемся на уникальные индексы БД, ловим `DbUpdateException` и превращаем их в ожидаемое бизнес-поведение.
-- **Транзакции**: Все multi-step операции, которые должны быть атомарными (например, перенос книги между пользовательскими коллекциями), оборачиваем в `BeginTransactionAsync(...)` и завершаем `CommitAsync(...)` только после успешного `SaveChangesAsync(...)`.
+## Пагинация
 
-## 🚨 Правило обновления документации
-Если ты создаешь новую подпапку (например, `Middlewares/`, `Filters/` или `Helpers/`), **ТЫ ОБЯЗАН** добавить ее описание в этот файл `AI_INSTRUCTIONS.md`!
+### Cursor Pagination — единственный нормальный стандарт
+
+- [CRITICAL] Все новые списочные endpoint'ы обязаны использовать `CursorPagedResult<T, TCursor>`.
+- [CRITICAL] Для каталога книг курсор основан на `Guid`-идентификаторе, а порядок — `OrderByDescending(Id)`. Это опирается на UUIDv7 и должно сохраняться.
+- [MANDATORY] Для курсорной выборки используй шаблон: фильтр по курсору -> сортировка -> `Take(limit + 1)` -> вычисление `HasMore` -> удаление лишнего элемента -> вычисление `NextCursor` по последнему реально возвращаемому элементу.
+- [MANDATORY] Для глав курсор основан на `ChapterNumber` (`int`) с поддержкой `sortDesc`.
+- [FORBIDDEN] Вводить `Skip/Take`-based offset pagination в новые API “для простоты”.
+- [FORBIDDEN] Сортировать cursor-ленты по произвольным полям без доказанного стабильного порядка.
+- [MANDATORY] `PagedResult<T>` считать legacy/compatibility-моделью. Новые endpoint'ы на неё не проектировать.
+
+## Ошибки и HTTP-контракт
+
+### GlobalExceptionMiddleware и ProblemDetails
+
+- [CRITICAL] Непредвиденные исключения должны доходить до `GlobalExceptionMiddleware`.
+- [CRITICAL] Формат неожиданных server-side ошибок — `application/problem+json` (`ProblemDetails`, RFC 7807).
+- [FORBIDDEN] Возвращать самодельные `500`-ответы из контроллеров или дублировать глобальную обработку ошибок локальными `try/catch`.
+- [MANDATORY] Локально перехватывать только ожидаемые бизнес-ошибки и преобразовывать их в конкретные `4xx` (`401`, `403`, `404`, `409`, `400`).
+- [MANDATORY] В development можно показывать детали исключения, но утечки внутренних деталей в production недопустимы.
+
+## Безопасность
+
+### Аутентификация, авторизация, секреты
+
+- [CRITICAL] Защита endpoint'ов строится через `[Authorize]` и `[Authorize(Roles = "Admin")]`. Не изобретай альтернативные механизмы gatekeeping на уровне контроллеров.
+- [CRITICAL] Пользовательский идентификатор всегда берётся из claims текущего токена. Никогда не принимай `userId` из body/query как источник истины.
+- [MANDATORY] JWT-ключ и connection string приходят из конфигурации/переменных окружения. В репозитории допускаются только пустые заглушки.
+- [MANDATORY] Пароли хранятся только как `BCrypt` hash. Любое хранение или логирование plaintext-пароля запрещено.
+- [MANDATORY] CORS настраивается только через конфиг origins. Безопасный fallback — localhost frontend. `AllowAnyOrigin()` в рабочем коде запрещён.
+
+## Race Conditions, идемпотентность и транзакции
+
+### Защита от гонок — обязательна
+
+- [CRITICAL] Для сущностей с уникальными ограничениями нельзя делать шаблон “сначала `AnyAsync`, потом insert” как защиту от дублей. Это гонка.
+- [CRITICAL] Защита от дублей строится на уникальных индексах БД и обработке `DbUpdateException` / `PostgresErrorCodes.UniqueViolation`.
+- [MANDATORY] Идемпотентные операции должны быть реально идемпотентными. Если повторная запись допустима как no-op, дубликат нужно тихо схлопывать, а не превращать в `500`.
+- [CRITICAL] Все multi-step операции, которые меняют несколько строк и обязаны быть атомарными, оборачиваются в явную транзакцию через `BeginTransactionAsync(...)` + `CommitAsync(...)`.
+- [MANDATORY] Инвариант “одна книга находится только в одной коллекции пользователя” обеспечивается на backend. Frontend не является защитным слоем.
+- [MANDATORY] Проверка владения коллекцией выполняется до мутаций; попытка работать с чужой коллекцией — это `UnauthorizedAccessException`/`Forbid`, а не “молчаливый успех”.
+
+## EF Core lifecycle
+
+### UUIDv7, audit-поля и Fluent API
+
+- [CRITICAL] Генерация `Guid.CreateVersion7()` централизована в `AppDbContext.AddAuditInfo()`. Новые сущности с `Id` не должны получать ID вручную без крайней необходимости.
+- [CRITICAL] `CreatedAt`, `UpdatedAt`, `AddedAt` выставляются централизованно в `SaveChanges/SaveChangesAsync`. Не дублируй это в сервисах, контроллерах или DTO-mapper'ах.
+- [FORBIDDEN] Обходить `SaveChanges`-хуки сырыми bulk-операциями, если это ломает автоматическое выставление audit-полей/UUIDv7.
+- [MANDATORY] Fluent API в `OnModelCreating` — источник истины для индексов, `IsRequired`, `MaxLength`, composite keys, внешних ключей и cascade behavior.
+- [MANDATORY] SQL-defaults (`gen_random_uuid()`, `now()`) считаются safety net на стороне БД, но прикладной код всё равно обязан уважать централизованный lifecycle через `AppDbContext`.
+
+## Работа с запросами и DTO
+
+- [MANDATORY] Read-only запросы писать через `AsNoTracking()`.
+- [MANDATORY] Проецируй в DTO прямо на уровне LINQ `Select`, а не загружай Entity в память ради ручного маппинга после этого.
+- [MANDATORY] Все входные модели валидируются через `System.ComponentModel.DataAnnotations`.
+- [MANDATORY] Контроллеры обязаны прокидывать `CancellationToken` вниз по стеку в сервисы и EF-запросы.
+- [MANDATORY] Создающие endpoint'ы возвращают `CreatedAtAction(...)`, если это соответствует ресурсу.
+- [FORBIDDEN] Возвращать анонимные EF-сущности, навигации или “временные” поля, которых нет в DTO.
+
+## Что нельзя ломать
+
+- [FORBIDDEN] Убирать `GlobalExceptionMiddleware` из pipeline.
+- [FORBIDDEN] Менять порядок auth middleware так, чтобы `UseAuthorization()` вызывался раньше `UseAuthentication()`.
+- [FORBIDDEN] Переводить курсорные списки обратно на offset.
+- [FORBIDDEN] Размазывать ownership checks, transaction logic и unique-violation handling по контроллерам.
+
+## Обновление документации
+
+- [MANDATORY] Добавил новый слой, новый кросс-срез, новый стандарт ошибок/авторизации/пагинации/транзакций — обнови этот файл немедленно.
