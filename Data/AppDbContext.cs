@@ -1,3 +1,4 @@
+using LibNode.Api.Models.Enums;
 using LibNode.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,6 +18,8 @@ public class AppDbContext : DbContext
     public DbSet<CollectionBook> CollectionBooks => Set<CollectionBook>();
     public DbSet<ChapterLike> ChapterLikes => Set<ChapterLike>();
     public DbSet<ReadingProgress> ReadingProgresses => Set<ReadingProgress>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<Category> Categories => Set<Category>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,14 +43,31 @@ public class AppDbContext : DbContext
             entity.Property(b => b.CoverUrl)
                   .HasMaxLength(2048);
 
+            entity.Property(b => b.Type)
+                  .HasConversion<int>()
+                  .HasDefaultValue(BookType.Japan);
+
+            entity.Property(b => b.OriginalStatus)
+                  .HasConversion<int>()
+                  .HasDefaultValue(OriginalStatus.None);
+
+            entity.Property(b => b.TranslationStatus)
+                  .HasConversion<int>()
+                  .HasDefaultValue(TranslationStatus.None);
+
             entity.Property(b => b.CreatedAt)
                   .HasDefaultValueSql("now()");
 
             entity.Property(b => b.UpdatedAt)
                   .HasDefaultValueSql("now()");
 
-            // Индекс для поиска и сортировки по названию
             entity.HasIndex(b => b.Title);
+
+            entity.HasMany(b => b.Tags)
+                  .WithMany(t => t.Books);
+
+            entity.HasMany(b => b.Categories)
+                  .WithMany(c => c.Books);
         });
 
         // ── Chapter ─────────────────────────────────────
@@ -77,6 +97,56 @@ public class AppDbContext : DbContext
             // Составной индекс для быстрой выборки глав книги по порядку
             entity.HasIndex(c => new { c.BookId, c.ChapterNumber })
                   .IsUnique();
+        });
+
+        // ── Tag ──────────────────────────────────────────
+        modelBuilder.Entity<Tag>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+
+            entity.Property(t => t.Id)
+                  .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(t => t.Name)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            entity.Property(t => t.Slug)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            entity.Property(t => t.CreatedAt)
+                  .HasDefaultValueSql("now()");
+
+            entity.Property(t => t.UpdatedAt)
+                  .HasDefaultValueSql("now()");
+
+            entity.HasIndex(t => t.Slug).IsUnique();
+        });
+
+        // ── Category ─────────────────────────────────────
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+
+            entity.Property(c => c.Id)
+                  .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(c => c.Name)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            entity.Property(c => c.Slug)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            entity.Property(c => c.CreatedAt)
+                  .HasDefaultValueSql("now()");
+
+            entity.Property(c => c.UpdatedAt)
+                  .HasDefaultValueSql("now()");
+
+            entity.HasIndex(c => c.Slug).IsUnique();
         });
 
         // ── User ────────────────────────────────────────

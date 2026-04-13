@@ -1,3 +1,5 @@
+using LibNode.Api.Models.Enums;
+
 namespace LibNode.Api.Models.Entities;
 
 /// <summary>
@@ -16,6 +18,15 @@ public class Book
     /// <summary>URL обложки (внешний CDN или локальное хранилище).</summary>
     public string? CoverUrl { get; set; }
 
+    /// <summary>Тип / страна происхождения произведения.</summary>
+    public BookType Type { get; set; } = BookType.Japan;
+
+    /// <summary>Статус оригинала.</summary>
+    public OriginalStatus OriginalStatus { get; set; } = OriginalStatus.None;
+
+    /// <summary>Статус перевода.</summary>
+    public TranslationStatus TranslationStatus { get; set; } = TranslationStatus.None;
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -26,4 +37,10 @@ public class Book
     /// <summary>Вхождение книги в коллекции пользователей.</summary>
     public ICollection<CollectionBook> CollectionBooks { get; set; } = new List<CollectionBook>();
     public ICollection<ReadingProgress> ReadingProgresses { get; set; } = new List<ReadingProgress>();
+
+    /// <summary>Теги книги (М : М).</summary>
+    public ICollection<Tag> Tags { get; set; } = new List<Tag>();
+
+    /// <summary>Категории книги (М : М).</summary>
+    public ICollection<Category> Categories { get; set; } = new List<Category>();
 }

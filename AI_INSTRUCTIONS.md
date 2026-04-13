@@ -10,7 +10,7 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [CRITICAL] `Controllers/` принимают HTTP-запрос, читают route/query/body, навешивают `[Authorize]`, валидируют вход через DTO и возвращают HTTP-ответ. Контроллеры не содержат бизнес-логику, SQL, транзакции и прямую работу с `DbContext`.
 - [CRITICAL] `Services/` — единственное место для бизнес-логики, инвариантов, доступа к данным, транзакций, идемпотентности и проверок владения ресурсами.
 - [CRITICAL] `Data/AppDbContext.cs` — единственный источник истины для EF-конфигурации, индексов, ограничений, каскадов, UUIDv7 и audit-полей.
-- [MANDATORY] `Models/Entities` — только ORM-сущности. `Models/DTOs` — только публичные контракты API. Возвращать Entity наружу запрещено.
+- [MANDATORY] `Models/Entities` — только ORM-сущности. `Models/DTOs` — только публичные контракты API. `Models/Enums` — перечисления предметной области. Возвращать Entity наружу запрещено.
 - [FORBIDDEN] Вводить repository layer, generic repository, unit of work wrapper, mediator-обвязку или “helper service” поверх уже существующей схемы `Controller -> Service -> AppDbContext`, если это не продиктовано реальной архитектурной причиной.
 
 ## Пагинация
@@ -55,6 +55,15 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [CRITICAL] Все multi-step операции, которые меняют несколько строк и обязаны быть атомарными, оборачиваются в явную транзакцию через `BeginTransactionAsync(...)` + `CommitAsync(...)`.
 - [MANDATORY] Инвариант “одна книга находится только в одной коллекции пользователя” обеспечивается на backend. Frontend не является защитным слоем.
 - [MANDATORY] Проверка владения коллекцией выполняется до мутаций; попытка работать с чужой коллекцией — это `UnauthorizedAccessException`/`Forbid`, а не “молчаливый успех”.
+
+## Enum-поля и многие-ко-многим
+
+### Модели метаданных книги
+
+- [MANDATORY] Enum-поля сущностей (`BookType`, `OriginalStatus`, `TranslationStatus`) хранятся как `int` через `.HasConversion<int>()` в Fluent API. Enum-типы живут в `Models/Enums/`.
+- [MANDATORY] Связь М:М между `Book` и `Tag`/`Category` настраивается через неявную join-таблицу EF Core (`HasMany().WithMany()`). Не создавай явную сущность-связку, если нет дополнительных полей на связи.
+- [MANDATORY] `Tag` и `Category` имеют уникальный индекс на `Slug`. Защита от дублей — на уровне БД, а не через `AnyAsync`.
+- [MANDATORY] При создании книги (`CreateBookDto`) теги и категории привязываются через `TagIds`/`CategoryIds` — сервис загружает их из БД и добавляет в коллекцию навигации.
 
 ## EF Core lifecycle
 

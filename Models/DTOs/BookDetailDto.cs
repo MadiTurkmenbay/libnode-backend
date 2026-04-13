@@ -1,3 +1,5 @@
+using LibNode.Api.Models.Enums;
+
 namespace LibNode.Api.Models.DTOs;
 
 /// <summary>
@@ -8,8 +10,13 @@ public record BookDetailDto(
     string Title,
     string? Description,
     string? CoverUrl,
+    BookType Type,
+    OriginalStatus OriginalStatus,
+    TranslationStatus TranslationStatus,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     int ChapterCount,
-    ReadingProgressDto? UserProgress
+    ReadingProgressDto? UserProgress,
+    List<TagDto> Tags,
+    List<CategoryDto> Categories
 );

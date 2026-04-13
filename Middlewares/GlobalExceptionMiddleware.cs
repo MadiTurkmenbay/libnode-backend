@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using LibNode.Api.Exceptions;
+using Microsoft.AspNetCore.Mvc;
 
 namespace LibNode.Api.Middlewares;
 
@@ -26,7 +27,7 @@ public class GlobalExceptionMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Произошла непредвиденная ошибка при обработке запроса.");
+            _logger.LogError(ex, "Произошла необработанная ошибка при обработке запроса.");
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -34,18 +35,32 @@ public class GlobalExceptionMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/problem+json";
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+        var (statusCode, title, detail) = exception switch
+        {
+            ConflictException conflict => (
+                StatusCodes.Status409Conflict,
+                "Конфликт данных",
+                conflict.Message
+            ),
+            _ => (
+                StatusCodes.Status500InternalServerError,
+                "Внутренняя ошибка сервера",
+                "Произошла непредвиденная ошибка на стороне сервера. Пожалуйста, обратитесь к администратору."
+            )
+        };
+
+        context.Response.StatusCode = statusCode;
 
         var problemDetails = new ProblemDetails
         {
-            Status = StatusCodes.Status500InternalServerError,
-            Title = "Внутренняя ошибка сервера",
-            Detail = "Произошла непредвиденная ошибка на стороне сервера. Пожалуйста, обратитесь к администратору."
+            Status = statusCode,
+            Title = title,
+            Detail = detail
         };
 
-        // В среде разработки можно добавить StackTrace
         var env = context.RequestServices.GetService<IWebHostEnvironment>();
-        if (env?.IsDevelopment() == true)
+        if (env?.IsDevelopment() == true && statusCode == StatusCodes.Status500InternalServerError)
         {
             problemDetails.Detail = exception.Message;
             problemDetails.Extensions["trace"] = exception.StackTrace;

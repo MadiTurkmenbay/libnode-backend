@@ -2,6 +2,7 @@ using LibNode.Api.Data;
 using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
+using LibNode.Api.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace LibNode.Api.Services;
@@ -21,7 +22,10 @@ public class BookService : IBookService
     /// <inheritdoc />
     public async Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(Guid? cursor, int limit = 20, Guid? userId = null, CancellationToken ct = default)
     {
-        var query = _db.Books.AsNoTracking();
+        IQueryable<Book> query = _db.Books
+            .AsNoTracking()
+            .Include(b => b.Tags)
+            .Include(b => b.Categories);
 
         if (cursor.HasValue)
         {
@@ -44,6 +48,9 @@ public class BookService : IBookService
                     b.Title,
                     b.Description,
                     b.CoverUrl,
+                    b.Type,
+                    b.OriginalStatus,
+                    b.TranslationStatus,
                     b.CreatedAt,
                     b.UpdatedAt,
                     b.Chapters.Count,
@@ -53,7 +60,9 @@ public class BookService : IBookService
                             rp.ChapterId,
                             rp.Chapter.ChapterNumber
                         ))
-                        .FirstOrDefault()
+                        .FirstOrDefault(),
+                    b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
                 ))
                 .ToListAsync(ct);
         }
@@ -65,10 +74,15 @@ public class BookService : IBookService
                     b.Title,
                     b.Description,
                     b.CoverUrl,
+                    b.Type,
+                    b.OriginalStatus,
+                    b.TranslationStatus,
                     b.CreatedAt,
                     b.UpdatedAt,
                     b.Chapters.Count,
-                    null
+                    null,
+                    b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
                 ))
                 .ToListAsync(ct);
         }
@@ -90,6 +104,8 @@ public class BookService : IBookService
     {
         var query = _db.Books
             .AsNoTracking()
+            .Include(b => b.Tags)
+            .Include(b => b.Categories)
             .Where(b => b.Id == id);
 
         if (userId.HasValue)
@@ -102,6 +118,9 @@ public class BookService : IBookService
                     b.Title,
                     b.Description,
                     b.CoverUrl,
+                    b.Type,
+                    b.OriginalStatus,
+                    b.TranslationStatus,
                     b.CreatedAt,
                     b.UpdatedAt,
                     b.Chapters.Count,
@@ -111,7 +130,9 @@ public class BookService : IBookService
                             rp.ChapterId,
                             rp.Chapter.ChapterNumber
                         ))
-                        .FirstOrDefault()
+                        .FirstOrDefault(),
+                    b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
                 ))
                 .FirstOrDefaultAsync(ct);
         }
@@ -122,10 +143,15 @@ public class BookService : IBookService
                 b.Title,
                 b.Description,
                 b.CoverUrl,
+                b.Type,
+                b.OriginalStatus,
+                b.TranslationStatus,
                 b.CreatedAt,
                 b.UpdatedAt,
                 b.Chapters.Count,
-                null
+                null,
+                b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+                b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
             ))
             .FirstOrDefaultAsync(ct);
     }
@@ -137,8 +163,35 @@ public class BookService : IBookService
         {
             Title = dto.Title,
             Description = dto.Description,
-            CoverUrl = dto.CoverUrl
+            CoverUrl = dto.CoverUrl,
+            Type = dto.Type,
+            OriginalStatus = dto.OriginalStatus,
+            TranslationStatus = dto.TranslationStatus
         };
+
+        if (dto.TagIds is { Count: > 0 })
+        {
+            var tags = await _db.Tags
+                .Where(t => dto.TagIds.Contains(t.Id))
+                .ToListAsync(ct);
+
+            foreach (var tag in tags)
+            {
+                book.Tags.Add(tag);
+            }
+        }
+
+        if (dto.CategoryIds is { Count: > 0 })
+        {
+            var categories = await _db.Categories
+                .Where(c => dto.CategoryIds.Contains(c.Id))
+                .ToListAsync(ct);
+
+            foreach (var category in categories)
+            {
+                book.Categories.Add(category);
+            }
+        }
 
         _db.Books.Add(book);
         await _db.SaveChangesAsync(ct);
@@ -148,10 +201,15 @@ public class BookService : IBookService
             book.Title,
             book.Description,
             book.CoverUrl,
+            book.Type,
+            book.OriginalStatus,
+            book.TranslationStatus,
             book.CreatedAt,
             book.UpdatedAt,
             0,
-            null
+            null,
+            book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+            book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
         );
     }
 }

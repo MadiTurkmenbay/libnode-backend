@@ -1,6 +1,7 @@
 using LibNode.Api.Data;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
+using LibNode.Api.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace LibNode.Api.Services;
@@ -71,10 +72,15 @@ public class CollectionService : ICollectionService
                 cb.Book.Title,
                 cb.Book.Description,
                 cb.Book.CoverUrl,
+                cb.Book.Type,
+                cb.Book.OriginalStatus,
+                cb.Book.TranslationStatus,
                 cb.Book.CreatedAt,
                 cb.Book.UpdatedAt,
                 _context.Chapters.Count(ch => ch.BookId == cb.Book.Id),
-                null
+                null,
+                new List<TagDto>(),
+                new List<CategoryDto>()
             )).ToList()
         };
     }
