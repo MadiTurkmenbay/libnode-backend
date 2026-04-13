@@ -19,7 +19,7 @@ public class BookService : IBookService
     }
 
     /// <inheritdoc />
-    public async Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(Guid? cursor, int limit = 20, CancellationToken ct = default)
+    public async Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(Guid? cursor, int limit = 20, Guid? userId = null, CancellationToken ct = default)
     {
         var query = _db.Books.AsNoTracking();
 
@@ -28,12 +28,50 @@ public class BookService : IBookService
             query = query.Where(b => b.Id < cursor.Value);
         }
 
-        // Запрашиваем limit + 1 для определения HasMore
-        var items = await query
+        var orderedQuery = query
             .OrderByDescending(b => b.Id)
-            .Take(limit + 1)
-            .Select(b => MapToDto(b))
-            .ToListAsync(ct);
+            .Take(limit + 1);
+
+        List<BookDto> items;
+
+        if (userId.HasValue)
+        {
+            var currentUserId = userId.Value;
+
+            items = await orderedQuery
+                .Select(b => new BookDto(
+                    b.Id,
+                    b.Title,
+                    b.Description,
+                    b.CoverUrl,
+                    b.CreatedAt,
+                    b.UpdatedAt,
+                    b.Chapters.Count,
+                    b.ReadingProgresses
+                        .Where(rp => rp.UserId == currentUserId)
+                        .Select(rp => new ReadingProgressDto(
+                            rp.ChapterId,
+                            rp.Chapter.ChapterNumber
+                        ))
+                        .FirstOrDefault()
+                ))
+                .ToListAsync(ct);
+        }
+        else
+        {
+            items = await orderedQuery
+                .Select(b => new BookDto(
+                    b.Id,
+                    b.Title,
+                    b.Description,
+                    b.CoverUrl,
+                    b.CreatedAt,
+                    b.UpdatedAt,
+                    b.Chapters.Count,
+                    null
+                ))
+                .ToListAsync(ct);
+        }
 
         var hasMore = items.Count > limit;
 
@@ -48,12 +86,47 @@ public class BookService : IBookService
     }
 
     /// <inheritdoc />
-    public async Task<BookDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<BookDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)
     {
-        return await _db.Books
+        var query = _db.Books
             .AsNoTracking()
-            .Where(b => b.Id == id)
-            .Select(b => MapToDto(b))
+            .Where(b => b.Id == id);
+
+        if (userId.HasValue)
+        {
+            var currentUserId = userId.Value;
+
+            return await query
+                .Select(b => new BookDetailDto(
+                    b.Id,
+                    b.Title,
+                    b.Description,
+                    b.CoverUrl,
+                    b.CreatedAt,
+                    b.UpdatedAt,
+                    b.Chapters.Count,
+                    b.ReadingProgresses
+                        .Where(rp => rp.UserId == currentUserId)
+                        .Select(rp => new ReadingProgressDto(
+                            rp.ChapterId,
+                            rp.Chapter.ChapterNumber
+                        ))
+                        .FirstOrDefault()
+                ))
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return await query
+            .Select(b => new BookDetailDto(
+                b.Id,
+                b.Title,
+                b.Description,
+                b.CoverUrl,
+                b.CreatedAt,
+                b.UpdatedAt,
+                b.Chapters.Count,
+                null
+            ))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -71,28 +144,14 @@ public class BookService : IBookService
         await _db.SaveChangesAsync(ct);
 
         return new BookDto(
-            Id: book.Id,
-            Title: book.Title,
-            Description: book.Description,
-            CoverUrl: book.CoverUrl,
-            CreatedAt: book.CreatedAt,
-            UpdatedAt: book.UpdatedAt,
-            ChapterCount: 0
+            book.Id,
+            book.Title,
+            book.Description,
+            book.CoverUrl,
+            book.CreatedAt,
+            book.UpdatedAt,
+            0,
+            null
         );
     }
-
-    // ── Mapping ─────────────────────────────────────────
-    /// <summary>
-    /// Проекция сущности Book в DTO.
-    /// Используется как Expression для server-side evaluation в EF.
-    /// </summary>
-    private static BookDto MapToDto(Book b) => new(
-        Id: b.Id,
-        Title: b.Title,
-        Description: b.Description,
-        CoverUrl: b.CoverUrl,
-        CreatedAt: b.CreatedAt,
-        UpdatedAt: b.UpdatedAt,
-        ChapterCount: b.Chapters.Count
-    );
 }

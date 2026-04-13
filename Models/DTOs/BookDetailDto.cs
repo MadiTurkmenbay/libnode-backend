@@ -1,9 +1,9 @@
 namespace LibNode.Api.Models.DTOs;
 
 /// <summary>
-/// DTO для отдачи книги клиенту. Не содержит навигационных свойств EF.
+/// Детальный DTO книги для страницы произведения.
 /// </summary>
-public record BookDto(
+public record BookDetailDto(
     Guid Id,
     string Title,
     string? Description,

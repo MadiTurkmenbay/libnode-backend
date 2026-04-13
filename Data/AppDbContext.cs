@@ -16,6 +16,7 @@ public class AppDbContext : DbContext
     public DbSet<UserCollection> UserCollections => Set<UserCollection>();
     public DbSet<CollectionBook> CollectionBooks => Set<CollectionBook>();
     public DbSet<ChapterLike> ChapterLikes => Set<ChapterLike>();
+    public DbSet<ReadingProgress> ReadingProgresses => Set<ReadingProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -173,6 +174,29 @@ public class AppDbContext : DbContext
             entity.HasOne(cl => cl.Chapter)
                   .WithMany(c => c.Likes)
                   .HasForeignKey(cl => cl.ChapterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReadingProgress>(entity =>
+        {
+            entity.HasKey(rp => new { rp.UserId, rp.BookId });
+
+            entity.Property(rp => rp.UpdatedAt)
+                  .HasDefaultValueSql("now()");
+
+            entity.HasOne(rp => rp.User)
+                  .WithMany(u => u.ReadingProgresses)
+                  .HasForeignKey(rp => rp.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(rp => rp.Book)
+                  .WithMany(b => b.ReadingProgresses)
+                  .HasForeignKey(rp => rp.BookId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(rp => rp.Chapter)
+                  .WithMany(c => c.ReadingProgresses)
+                  .HasForeignKey(rp => rp.ChapterId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -49,6 +49,7 @@ builder.Services.AddScoped<IBookService, BookService>();
 builder.Services.AddScoped<IChapterService, ChapterService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICollectionService, CollectionService>();
+builder.Services.AddScoped<IReadingProgressService, ReadingProgressService>();
 
 // ── JWT Authentication ──────────────────────────────────────────────────────
 

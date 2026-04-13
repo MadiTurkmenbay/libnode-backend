@@ -25,4 +25,5 @@ public class Book
 
     /// <summary>Вхождение книги в коллекции пользователей.</summary>
     public ICollection<CollectionBook> CollectionBooks { get; set; } = new List<CollectionBook>();
+    public ICollection<ReadingProgress> ReadingProgresses { get; set; } = new List<ReadingProgress>();
 }

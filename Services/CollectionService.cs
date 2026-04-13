@@ -73,7 +73,8 @@ public class CollectionService : ICollectionService
                 cb.Book.CoverUrl,
                 cb.Book.CreatedAt,
                 cb.Book.UpdatedAt,
-                _context.Chapters.Count(ch => ch.BookId == cb.Book.Id)
+                _context.Chapters.Count(ch => ch.BookId == cb.Book.Id),
+                null
             )).ToList()
         };
     }

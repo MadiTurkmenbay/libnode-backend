@@ -26,4 +26,5 @@ public class User
 
     /// <summary>Лайки глав.</summary>
     public ICollection<ChapterLike> ChapterLikes { get; set; } = new List<ChapterLike>();
+    public ICollection<ReadingProgress> ReadingProgresses { get; set; } = new List<ReadingProgress>();
 }
