@@ -37,6 +37,9 @@ public class AppDbContext : DbContext
                   .IsRequired()
                   .HasMaxLength(300);
 
+            entity.Property(b => b.Slug)
+                  .HasMaxLength(300);
+
             entity.Property(b => b.Description)
                   .HasMaxLength(5000);
 
@@ -62,6 +65,7 @@ public class AppDbContext : DbContext
                   .HasDefaultValueSql("now()");
 
             entity.HasIndex(b => b.Title);
+            entity.HasIndex(b => b.Slug).IsUnique();
 
             entity.HasMany(b => b.Tags)
                   .WithMany(t => t.Books);
@@ -306,9 +310,14 @@ public class AppDbContext : DbContext
             {
                 // Генерация UUIDv7 для новых сущностей с пустым Guid-ключом
                 var idProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Id");
-                if (idProp != null && idProp.CurrentValue is Guid guidValue && guidValue == Guid.Empty)
+                if (idProp != null && idProp.Metadata.ClrType == typeof(Guid))
                 {
-                    idProp.CurrentValue = Guid.CreateVersion7();
+                    var currentGuid = idProp.CurrentValue as Guid?;
+                    if (!currentGuid.HasValue || currentGuid.Value == Guid.Empty)
+                    {
+                        idProp.CurrentValue = Guid.CreateVersion7();
+                        idProp.IsTemporary = false;
+                    }
                 }
 
                 var createdAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "CreatedAt");

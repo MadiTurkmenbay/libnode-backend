@@ -12,6 +12,8 @@ public class Book
     /// <summary>Название произведения.</summary>
     public required string Title { get; set; }
 
+    public string? Slug { get; set; }
+
     /// <summary>Описание / аннотация.</summary>
     public string? Description { get; set; }
 

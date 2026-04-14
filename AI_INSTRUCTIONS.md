@@ -40,8 +40,10 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 ### Аутентификация, авторизация, секреты
 
 - [CRITICAL] Защита endpoint'ов строится через `[Authorize]` и `[Authorize(Roles = "Admin")]`. Не изобретай альтернативные механизмы gatekeeping на уровне контроллеров.
+- [MANDATORY] Для server-to-server интеграций допускается отдельная authentication scheme, но она должна регистрироваться через ASP.NET authentication pipeline и использовать `[Authorize(AuthenticationSchemes = "...")]`, а не ручную проверку ключей в контроллере.
 - [CRITICAL] Пользовательский идентификатор всегда берётся из claims текущего токена. Никогда не принимай `userId` из body/query как источник истины.
 - [MANDATORY] JWT-ключ и connection string приходят из конфигурации/переменных окружения. В репозитории допускаются только пустые заглушки.
+- [MANDATORY] Секреты интеграций (`IntegrationAuth:*`, API keys внешних publisher/importer flows) приходят только из конфигурации/переменных окружения.
 - [MANDATORY] Пароли хранятся только как `BCrypt` hash. Любое хранение или логирование plaintext-пароля запрещено.
 - [MANDATORY] CORS настраивается только через конфиг origins. Безопасный fallback — localhost frontend. `AllowAnyOrigin()` в рабочем коде запрещён.
 
@@ -64,6 +66,7 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [MANDATORY] Связь М:М между `Book` и `Tag`/`Category` настраивается через неявную join-таблицу EF Core (`HasMany().WithMany()`). Не создавай явную сущность-связку, если нет дополнительных полей на связи.
 - [MANDATORY] `Tag` и `Category` имеют уникальный индекс на `Slug`. Защита от дублей — на уровне БД, а не через `AnyAsync`.
 - [MANDATORY] При создании книги (`CreateBookDto`) теги и категории привязываются через `TagIds`/`CategoryIds` — сервис загружает их из БД и добавляет в коллекцию навигации.
+- [MANDATORY] Если книга участвует во внешнем publishing/import flow, её стабильная внешняя идентичность хранится в `Book.Slug` с уникальным индексом; повторные интеграционные импорты должны опираться на этот slug, а не на title.
 
 ## EF Core lifecycle
 
@@ -82,6 +85,7 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [MANDATORY] Все входные модели валидируются через `System.ComponentModel.DataAnnotations`.
 - [MANDATORY] Контроллеры обязаны прокидывать `CancellationToken` вниз по стеку в сервисы и EF-запросы.
 - [MANDATORY] Создающие endpoint'ы возвращают `CreatedAtAction(...)`, если это соответствует ресурсу.
+- [MANDATORY] Внешние ingest endpoint'ы обязаны быть идемпотентными: повторный `create title` должен возвращать существующий ресурс по slug, а повторная загрузка главы — обновлять/схлопывать запись по `(BookId, ChapterNumber)`.
 - [FORBIDDEN] Возвращать анонимные EF-сущности, навигации или “временные” поля, которых нет в DTO.
 
 ## Что нельзя ломать

@@ -1,4 +1,5 @@
 using System.Text;
+using LibNode.Api.Authentication;
 using LibNode.Api.Data;
 using LibNode.Api.Middlewares;
 using LibNode.Api.Services;
@@ -52,6 +53,7 @@ builder.Services.AddScoped<ICollectionService, CollectionService>();
 builder.Services.AddScoped<IReadingProgressService, ReadingProgressService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<IReaderIngestService, ReaderIngestService>();
 
 // ── JWT Authentication ──────────────────────────────────────────────────────
 
@@ -86,7 +88,13 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(key),
         ClockSkew = TimeSpan.Zero // Без допуска по времени
     };
-});
+})
+.AddScheme<TranslatorApiKeyAuthenticationOptions, TranslatorApiKeyAuthenticationHandler>(
+    TranslatorApiKeyAuthenticationDefaults.SchemeName,
+    options =>
+    {
+        options.ApiKey = builder.Configuration["IntegrationAuth:TranslatorApiKey"] ?? string.Empty;
+    });
 
 builder.Services.AddAuthorization();
 
@@ -128,6 +136,14 @@ builder.Services.AddSwaggerGen(options =>
             },
             Array.Empty<string>()
         }
+    });
+
+    options.AddSecurityDefinition("TranslatorApiKey", new OpenApiSecurityScheme
+    {
+        Name = "x-api-key",
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Description = "API key for libnode-translator publishing integration."
     });
 });
 
