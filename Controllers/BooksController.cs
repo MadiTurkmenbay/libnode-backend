@@ -36,23 +36,28 @@ public class BooksController : ControllerBase
     }
 
     /// <summary>
-    /// Получить список книг с курсорной пагинацией.
+    /// Получить список книг с пагинацией.
+    /// Если задан SortBy — offset pagination (PagedResult), иначе — cursor pagination (CursorPagedResult).
     /// </summary>
-    /// <param name="cursor">ID последнего элемента из предыдущей страницы (null для первой страницы).</param>
-    /// <param name="limit">Количество элементов на страницу (1-100, по умолчанию 20).</param>
-    /// <response code="200">Список книг.</response>
     [HttpGet]
-    [ProducesResponseType(typeof(CursorPagedResult<BookDto, Guid>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
-        [FromQuery] Guid? cursor = null,
-        [FromQuery] int limit = 20,
+        [FromQuery] GetBooksQueryDto query,
         CancellationToken ct = default)
     {
-        if (limit < 1) limit = 20;
-        if (limit > 100) limit = 100;
+        var normalizedLimit = query.Limit;
+        if (normalizedLimit < 1) normalizedLimit = 20;
+        if (normalizedLimit > 100) normalizedLimit = 100;
 
-        var books = await _bookService.GetAllAsync(cursor, limit, TryGetCurrentUserId(), ct);
-        return Ok(books);
+        var normalizedQuery = query with { Limit = normalizedLimit };
+
+        if (normalizedQuery.SortBy.HasValue)
+        {
+            var pagedResult = await _bookService.GetAllWithOffsetAsync(normalizedQuery, TryGetCurrentUserId(), ct);
+            return Ok(pagedResult);
+        }
+
+        var cursorResult = await _bookService.GetAllAsync(normalizedQuery, TryGetCurrentUserId(), ct);
+        return Ok(cursorResult);
     }
 
     /// <summary>
