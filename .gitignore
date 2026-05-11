@@ -5,6 +5,10 @@
 
 # dotenv files
 .env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.local.json
 
 # User-specific files
 *.rsuser
@@ -45,6 +49,8 @@ Generated\ Files/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
+TestResults/
+*.trx
 [Bb]uild[Ll]og.*
 
 # NUnit
@@ -151,6 +157,7 @@ _TeamCity*
 !.axoCover/settings.json
 
 # Coverlet is a free, cross platform Code Coverage Tool
+coverage/
 coverage*.json
 coverage*.xml
 coverage*.info
