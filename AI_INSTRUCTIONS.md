@@ -3,6 +3,15 @@
 ## Контекст
 Backend LibNode написан на `.NET 10`, использует `ASP.NET Core`, `EF Core`, `PostgreSQL`, JWT-аутентификацию и сервисную архитектуру без лишних промежуточных абстракций.
 
+## Workspace Guardrails
+
+- Read `/home/qustust/projects/libnodeProject/AGENTS.md` before this file.
+- This repo is one implementation repository inside the LibNode workspace; do not commit parent `.planning/` from here.
+- Before editing or committing on user request, run `git status --short`, `git diff`, and `git diff --staged` from `libnode/`.
+- Use Docker-first acceptance through `../libnode-deployer/` for cross-service verification. Do not treat host-local `dotnet` commands as final cross-service proof.
+- Do not read, print, or commit real `.env` files, local appsettings overrides, connection strings, JWT keys, API keys, logs, `TestResults/`, or coverage artifacts.
+- Do not change backend runtime hardening, EF migrations, collection/progress invariants, reader navigation, or catalog pagination as part of Phase 1 workspace guidance.
+
 ## Базовая архитектура
 
 ### Слои и ответственность
