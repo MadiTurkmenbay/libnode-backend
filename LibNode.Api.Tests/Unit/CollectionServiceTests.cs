@@ -2,6 +2,8 @@ using LibNode.Api.Data;
 using LibNode.Api.Models.Entities;
 using LibNode.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Xunit;
 
 namespace LibNode.Api.Tests.Unit;
 
@@ -11,34 +13,44 @@ public class CollectionServiceTests
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new AppDbContext(options);
     }
 
-    private static async Task<(User user, Book book, UserCollection collection)> SeedUserBookAndCollectionAsync(AppDbContext context, string suffix)
+    private static User CreateUser(string suffix)
     {
-        var user = new User
+        return new User
         {
+            Id = Guid.NewGuid(),
             Username = $"user_{suffix}",
             Email = $"user_{suffix}@test.local",
             PasswordHash = "hash"
         };
-        var book = new Book { Title = $"Book {suffix}" };
-        var collection = new UserCollection { UserId = user.Id, Name = $"Collection {suffix}" };
-        context.Users.Add(user);
-        context.Books.Add(book);
-        context.UserCollections.Add(collection);
-        await context.SaveChangesAsync();
-        return (user, book, collection);
+    }
+
+    private static Book CreateBook(string suffix)
+    {
+        return new Book
+        {
+            Id = Guid.NewGuid(),
+            Title = $"Book {suffix}",
+        };
     }
 
     [Fact]
     public async Task AddBookToCollectionAsync_WhenAlreadyInTarget_DoesNotDuplicate()
     {
         using var context = CreateContext();
-        var (user, book, collection) = await SeedUserBookAndCollectionAsync(context, "dup");
-        var service = new CollectionService(context);
+        var user = CreateUser("dup");
+        var book = CreateBook("dup");
+        var collection = new UserCollection { Id = Guid.NewGuid(), UserId = user.Id, Name = "Collection dup" };
+        context.Users.Add(user);
+        context.Books.Add(book);
+        context.UserCollections.Add(collection);
+        await context.SaveChangesAsync();
 
+        var service = new CollectionService(context);
         await service.AddBookToCollectionAsync(collection.Id, book.Id, user.Id);
         await service.AddBookToCollectionAsync(collection.Id, book.Id, user.Id);
 
@@ -49,15 +61,10 @@ public class CollectionServiceTests
     public async Task MoveBookBetweenCollectionsAsync_AtomicallyRemovesFromSource()
     {
         using var context = CreateContext();
-        var user = new User
-        {
-            Username = "move_user",
-            Email = "move_user@test.local",
-            PasswordHash = "hash"
-        };
-        var book = new Book { Title = "Move Book" };
-        var collectionA = new UserCollection { UserId = user.Id, Name = "A" };
-        var collectionB = new UserCollection { UserId = user.Id, Name = "B" };
+        var user = CreateUser("move");
+        var book = CreateBook("move");
+        var collectionA = new UserCollection { Id = Guid.NewGuid(), UserId = user.Id, Name = "A" };
+        var collectionB = new UserCollection { Id = Guid.NewGuid(), UserId = user.Id, Name = "B" };
         context.Users.Add(user);
         context.Books.Add(book);
         context.UserCollections.Add(collectionA);

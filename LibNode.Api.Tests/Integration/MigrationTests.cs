@@ -1,6 +1,7 @@
 using LibNode.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit;
 
 namespace LibNode.Api.Tests.Integration;
 

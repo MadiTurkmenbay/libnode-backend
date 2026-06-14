@@ -1,7 +1,9 @@
 using LibNode.Api.Data;
 using LibNode.Api.Models.Entities;
 using LibNode.Api.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit;
 
 namespace LibNode.Api.Tests.Integration;
 
@@ -19,6 +21,7 @@ public class CollectionServiceTests
     {
         return new User
         {
+            Id = Guid.NewGuid(),
             Username = $"user_{suffix}",
             Email = $"user_{suffix}@test.local",
             PasswordHash = "hash"
@@ -29,6 +32,7 @@ public class CollectionServiceTests
     {
         return new Book
         {
+            Id = Guid.NewGuid(),
             Title = $"Book {suffix}",
         };
     }
@@ -39,6 +43,7 @@ public class CollectionServiceTests
         var book = CreateBook(suffix);
         var collection = new UserCollection
         {
+            Id = Guid.NewGuid(),
             UserId = user.Id,
             Name = $"Collection {suffix}",
         };
@@ -75,8 +80,8 @@ public class CollectionServiceTests
 
         var user = CreateUser("move");
         var book = CreateBook("move");
-        var collectionA = new UserCollection { UserId = user.Id, Name = "Collection A" };
-        var collectionB = new UserCollection { UserId = user.Id, Name = "Collection B" };
+        var collectionA = new UserCollection { Id = Guid.NewGuid(), UserId = user.Id, Name = "Collection A" };
+        var collectionB = new UserCollection { Id = Guid.NewGuid(), UserId = user.Id, Name = "Collection B" };
         context.Users.Add(user);
         context.Books.Add(book);
         context.UserCollections.Add(collectionA);
@@ -106,7 +111,7 @@ public class CollectionServiceTests
         var owner = CreateUser("owner");
         var intruder = CreateUser("intruder");
         var book = CreateBook("owner");
-        var collection = new UserCollection { UserId = owner.Id, Name = "Owner Collection" };
+        var collection = new UserCollection { Id = Guid.NewGuid(), UserId = owner.Id, Name = "Owner Collection" };
         context.Users.Add(owner);
         context.Users.Add(intruder);
         context.Books.Add(book);

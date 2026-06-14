@@ -2,6 +2,7 @@ using LibNode.Api.Data;
 using LibNode.Api.Models.Entities;
 using LibNode.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Xunit;
 
 namespace LibNode.Api.Tests.Unit;
 
@@ -19,13 +20,28 @@ public class ReadingProgressServiceTests
     {
         var user = new User
         {
+            Id = Guid.NewGuid(),
             Username = "progress_user",
             Email = "progress_user@test.local",
             PasswordHash = "hash"
         };
-        var book = new Book { Title = "Progress Book" };
-        var chapter1 = new Chapter { BookId = book.Id, Title = "Chapter 1", Content = "...", ChapterNumber = 1 };
-        var chapter2 = new Chapter { BookId = book.Id, Title = "Chapter 2", Content = "...", ChapterNumber = 2 };
+        var book = new Book { Id = Guid.NewGuid(), Title = "Progress Book" };
+        var chapter1 = new Chapter
+        {
+            Id = Guid.NewGuid(),
+            BookId = book.Id,
+            Title = "Chapter 1",
+            Content = "...",
+            ChapterNumber = 1
+        };
+        var chapter2 = new Chapter
+        {
+            Id = Guid.NewGuid(),
+            BookId = book.Id,
+            Title = "Chapter 2",
+            Content = "...",
+            ChapterNumber = 2
+        };
         context.Users.Add(user);
         context.Books.Add(book);
         context.Chapters.Add(chapter1);

@@ -1,15 +1,26 @@
-.git
-.env
-.env.*
+# Build outputs
 bin/
 obj/
-.output/
-.nuxt/
-.vs/
-.idea/
-coverage/
-TestResults/
+
+# Generated/config artifacts
 *.user
 *.suo
-*.log
-*.binlog
+.vs/
+.idea/
+
+# Git
+.git/
+
+# EF / publish
+/app/publish
+
+# Local dev config
+appsettings.Development.json
+
+# Local test / coverage
+TestResults/
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
