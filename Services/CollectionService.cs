@@ -103,22 +103,23 @@ public class CollectionService : ICollectionService
 
         await using var transaction = await _context.Database.BeginTransactionAsync(ct);
 
-        var existingLinks = await _context.CollectionBooks
-            .Where(cb => cb.BookId == bookId && cb.Collection!.UserId == userId)
-            .ToListAsync(ct);
+        var existingLink = await _context.CollectionBooks
+            .FirstOrDefaultAsync(cb => cb.BookId == bookId && cb.Collection!.UserId == userId, ct);
 
-        _context.CollectionBooks.RemoveRange(existingLinks);
-
-        var alreadyInTarget = existingLinks.Any(cb => cb.CollectionId == collectionId);
-
-        if (!alreadyInTarget)
+        if (existingLink != null && existingLink.CollectionId == collectionId)
         {
-            _context.CollectionBooks.Add(new CollectionBook
-            {
-                CollectionId = collectionId,
-                BookId = bookId
-            });
+            await transaction.CommitAsync(ct);
+            return;
         }
+
+        if (existingLink != null)
+            _context.CollectionBooks.Remove(existingLink);
+
+        _context.CollectionBooks.Add(new CollectionBook
+        {
+            CollectionId = collectionId,
+            BookId = bookId
+        });
 
         await _context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
