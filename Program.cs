@@ -217,3 +217,5 @@ if (builder.Configuration.GetValue<bool>("RateLimiting:Enabled"))
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }
