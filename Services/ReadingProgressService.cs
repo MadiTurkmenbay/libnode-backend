@@ -27,6 +27,27 @@ public class ReadingProgressService : IReadingProgressService
             throw new ArgumentException("Глава не найдена или не принадлежит указанной книге.");
         }
 
-        await _db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"ReadingProgresses\" (\"UserId\", \"BookId\", \"ChapterId\", \"UpdatedAt\") VALUES ({userId}, {bookId}, {chapterId}, now()) ON CONFLICT (\"UserId\", \"BookId\") DO UPDATE SET \"ChapterId\" = EXCLUDED.\"ChapterId\", \"UpdatedAt\" = now()", ct);
+        if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var existing = await _db.ReadingProgresses.FindAsync(new object[] { userId, bookId }, ct);
+            if (existing is null)
+            {
+                _db.ReadingProgresses.Add(new ReadingProgress
+                {
+                    UserId = userId,
+                    BookId = bookId,
+                    ChapterId = chapterId
+                });
+            }
+            else
+            {
+                existing.ChapterId = chapterId;
+            }
+            await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"ReadingProgresses\" (\"UserId\", \"BookId\", \"ChapterId\", \"UpdatedAt\") VALUES ({userId}, {bookId}, {chapterId}, now()) ON CONFLICT (\"UserId\", \"BookId\") DO UPDATE SET \"ChapterId\" = EXCLUDED.\"ChapterId\", \"UpdatedAt\" = now()", ct);
+        }
     }
 }
