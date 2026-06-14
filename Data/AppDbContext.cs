@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<ReadingProgress> ReadingProgresses => Set<ReadingProgress>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Quote> Quotes => Set<Quote>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -272,6 +273,52 @@ public class AppDbContext : DbContext
                   .WithMany(c => c.ReadingProgresses)
                   .HasForeignKey(rp => rp.ChapterId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── Quote ───────────────────────────────────────────
+        modelBuilder.Entity<Quote>(entity =>
+        {
+            entity.HasKey(q => q.Id);
+
+            entity.Property(q => q.Id)
+                  .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(q => q.SelectedText)
+                  .IsRequired();
+
+            entity.Property(q => q.ContextText)
+                  .HasMaxLength(5000);
+
+            entity.Property(q => q.Note)
+                  .HasMaxLength(2000);
+
+            entity.Property(q => q.CreatedAt)
+                  .HasDefaultValueSql("now()");
+
+            entity.Property(q => q.UpdatedAt)
+                  .HasDefaultValueSql("now()");
+
+            // FK: Quote.UserId → User.Id (CASCADE DELETE)
+            entity.HasOne(q => q.User)
+                  .WithMany()
+                  .HasForeignKey(q => q.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // FK: Quote.ChapterId → Chapter.Id (CASCADE DELETE)
+            entity.HasOne(q => q.Chapter)
+                  .WithMany()
+                  .HasForeignKey(q => q.ChapterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // FK: Quote.BookId → Book.Id (CASCADE DELETE)
+            entity.HasOne(q => q.Book)
+                  .WithMany()
+                  .HasForeignKey(q => q.BookId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Быстрая выборка цитат пользователя и цитат по книге
+            entity.HasIndex(q => new { q.UserId, q.CreatedAt });
+            entity.HasIndex(q => new { q.BookId, q.UserId });
         });
     }
 

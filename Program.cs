@@ -58,6 +58,7 @@ builder.Services.AddScoped<IReadingProgressService, ReadingProgressService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IReaderIngestService, ReaderIngestService>();
+builder.Services.AddScoped<IQuoteService, QuoteService>();
 
 // ── JWT Authentication ──────────────────────────────────────────────────────
 

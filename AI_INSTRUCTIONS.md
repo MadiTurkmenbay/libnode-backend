@@ -90,6 +90,13 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [MANDATORY] Fluent API в `OnModelCreating` — источник истины для индексов, `IsRequired`, `MaxLength`, composite keys, внешних ключей и cascade behavior.
 - [MANDATORY] SQL-defaults (`gen_random_uuid()`, `now()`) считаются safety net на стороне БД, но прикладной код всё равно обязан уважать централизованный lifecycle через `AppDbContext`.
 
+## Quotes / User Highlights
+
+- [MANDATORY] User-created quotes live in `Quote` entity with `UserId`, `ChapterId`, `BookId` (denormalized), `SelectedText`, `ContextText`, `Note`, `CreatedAt`, `UpdatedAt`.
+- [MANDATORY] `Quote` ownership is enforced in `QuoteService` on every read/mutation path; users cannot see or modify other users' quotes.
+- [MANDATORY] `BookId` is derived from the chapter at creation time and stored in `Quote` for fast book-scoped listing.
+- [MANDATORY] Public endpoints are under `QuotesController` with `[Authorize]`; create returns `CreatedAtAction`, update note only, delete returns `NoContent` on success / `NotFound` when not found or not owned.
+
 ## Работа с запросами и DTO
 
 - [MANDATORY] Read-only запросы писать через `AsNoTracking()`.

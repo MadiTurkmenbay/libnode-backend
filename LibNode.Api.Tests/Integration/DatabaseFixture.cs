@@ -18,7 +18,7 @@ public class DatabaseFixture : IAsyncLifetime
         await context.Database.MigrateAsync();
         // Очищаем данные от предыдущих запусков тестового процесса, сохраняя схему.
         await context.Database.ExecuteSqlRawAsync("""
-            TRUNCATE TABLE "BookTag", "BookCategory", "CollectionBooks", "ChapterLikes", "ReadingProgresses", "UserCollections", "Chapters", "Books", "Users", "Tags", "Categories" CASCADE;
+            TRUNCATE TABLE "BookTag", "BookCategory", "CollectionBooks", "ChapterLikes", "ReadingProgresses", "UserCollections", "Quotes", "Chapters", "Books", "Users", "Tags", "Categories" CASCADE;
         """);
     }
 
