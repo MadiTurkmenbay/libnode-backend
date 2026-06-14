@@ -97,6 +97,23 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [MANDATORY] Внешние ingest endpoint'ы обязаны быть идемпотентными: повторный `create title` должен возвращать существующий ресурс по slug, а повторная загрузка главы — обновлять/схлопывать запись по `(BookId, ChapterNumber)`.
 - [FORBIDDEN] Возвращать анонимные EF-сущности, навигации или “временные” поля, которых нет в DTO.
 
+## Production Hardening
+
+### Middleware pipeline
+
+- [MANDATORY] `Program.cs` must gate Swagger UI on `Swagger:Enabled` configuration (bound from `Swagger__Enabled` env var), not on `IsDevelopment()`.
+- [MANDATORY] `ForwardedHeaders` middleware must be gated by `ForwardedHeaders:Enabled` configuration (bound from `ForwardedHeaders__Enabled` env var) and placed BEFORE `UseAuthentication` and `UseHttpsRedirection`.
+- [MANDATORY] When `ForwardedHeaders` is enabled, clear `KnownIPNetworks` and `KnownProxies` for Docker internal network trust; external reverse proxies require explicit IP configuration.
+- [MANDATORY] Rate limiting must be applied to specific sensitive controllers (`AuthController`, `ReaderIngestController`) using `[EnableRateLimiting("policy")]` with fixed-window policies, `QueueLimit = 0`, and `RejectionStatusCode = 429`.
+- [MANDATORY] `UseRateLimiter()` must be placed AFTER `UseAuthentication()` and `UseAuthorization()` but BEFORE `MapControllers()`, and must itself be gated by `RateLimiting:Enabled`.
+- [MANDATORY] `RequireHttpsMetadata` for JWT must be `!builder.Environment.IsDevelopment()` — `false` only in Development.
+- [MANDATORY] `AllowedHosts` must be explicit in production (not `*`) and overridden via deployer env vars.
+
+### Configuration
+
+- [MANDATORY] `appsettings.json` must contain `Swagger`, `ForwardedHeaders`, and `RateLimiting` sections with safe defaults (`false`).
+- [MANDATORY] `Cors:Origins` must be explicit; `AllowAnyOrigin()` is forbidden.
+
 ## Что нельзя ломать
 
 - [FORBIDDEN] Убирать `GlobalExceptionMiddleware` из pipeline.

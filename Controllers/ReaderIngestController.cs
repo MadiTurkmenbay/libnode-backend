@@ -2,6 +2,7 @@ using LibNode.Api.Authentication;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LibNode.Api.Controllers;
@@ -10,6 +11,7 @@ namespace LibNode.Api.Controllers;
 [Route("api/reader")]
 [Produces("application/json")]
 [Authorize(AuthenticationSchemes = TranslatorApiKeyAuthenticationDefaults.SchemeName)]
+[EnableRateLimiting("ingest")]
 public class ReaderIngestController : ControllerBase
 {
     private readonly IReaderIngestService _readerIngestService;

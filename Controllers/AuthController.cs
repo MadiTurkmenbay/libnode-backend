@@ -1,5 +1,6 @@
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Services;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LibNode.Api.Controllers;
@@ -10,6 +11,7 @@ namespace LibNode.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;

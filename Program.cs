@@ -1,9 +1,12 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using LibNode.Api.Authentication;
+using Microsoft.AspNetCore.RateLimiting;
 using LibNode.Api.Data;
 using LibNode.Api.Middlewares;
 using LibNode.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -20,6 +23,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:Origins")
     .Get<string[]>()?
+    .Select(origin => origin.Trim().TrimEnd('/'))
     .Where(origin => !string.IsNullOrWhiteSpace(origin))
     .Distinct(StringComparer.OrdinalIgnoreCase)
     .ToArray();
@@ -75,7 +79,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false; // Для разработки; в продакшене → true
+    options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -89,12 +93,49 @@ builder.Services.AddAuthentication(options =>
         ClockSkew = TimeSpan.Zero // Без допуска по времени
     };
 })
-.AddScheme<TranslatorApiKeyAuthenticationOptions, TranslatorApiKeyAuthenticationHandler>(
+    .AddScheme<TranslatorApiKeyAuthenticationOptions, TranslatorApiKeyAuthenticationHandler>(
     TranslatorApiKeyAuthenticationDefaults.SchemeName,
     options =>
     {
         options.ApiKey = builder.Configuration["IntegrationAuth:TranslatorApiKey"] ?? string.Empty;
     });
+
+// ── ForwardedHeaders (Docker/Nginx reverse proxy) ─────────────────────────
+if (builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+            ForwardedHeaders.XForwardedProto;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+
+// ── Rate Limiting (auth + translator ingest endpoints) ────────────────────
+if (builder.Configuration.GetValue<bool>("RateLimiting:Enabled"))
+{
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.AddFixedWindowLimiter("auth", opt =>
+        {
+            opt.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:Auth:PermitLimit");
+            opt.Window = TimeSpan.FromMinutes(
+                builder.Configuration.GetValue<int>("RateLimiting:Auth:WindowMinutes"));
+            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 0;
+        });
+        options.AddFixedWindowLimiter("ingest", opt =>
+        {
+            opt.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:Ingest:PermitLimit");
+            opt.Window = TimeSpan.FromMinutes(
+                builder.Configuration.GetValue<int>("RateLimiting:Ingest:WindowMinutes"));
+            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 0;
+        });
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    });
+}
 
 builder.Services.AddAuthorization();
 
@@ -151,7 +192,7 @@ var app = builder.Build();
 
 // ── Middleware pipeline ─────────────────────────────────────────────────────
 
-if (app.Environment.IsDevelopment())
+if (builder.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
@@ -164,10 +205,15 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+app.UseForwardedHeaders();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors("FrontendOrigins");
 app.UseAuthentication(); // ← ПЕРЕД UseAuthorization
 app.UseAuthorization();
+if (builder.Configuration.GetValue<bool>("RateLimiting:Enabled"))
+{
+    app.UseRateLimiter();
+}
 app.MapControllers();
 
 app.Run();
