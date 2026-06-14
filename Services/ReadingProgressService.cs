@@ -27,24 +27,6 @@ public class ReadingProgressService : IReadingProgressService
             throw new ArgumentException("Глава не найдена или не принадлежит указанной книге.");
         }
 
-        var progress = await _db.ReadingProgresses
-            .FirstOrDefaultAsync(rp => rp.UserId == userId && rp.BookId == bookId, ct);
-
-        if (progress is null)
-        {
-            _db.ReadingProgresses.Add(new ReadingProgress
-            {
-                UserId = userId,
-                BookId = bookId,
-                ChapterId = chapterId
-            });
-        }
-        else
-        {
-            progress.ChapterId = chapterId;
-            _db.Entry(progress).Property(rp => rp.ChapterId).IsModified = true;
-        }
-
-        await _db.SaveChangesAsync(ct);
+        await _db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"ReadingProgresses\" (\"UserId\", \"BookId\", \"ChapterId\", \"UpdatedAt\") VALUES ({userId}, {bookId}, {chapterId}, now()) ON CONFLICT (\"UserId\", \"BookId\") DO UPDATE SET \"ChapterId\" = EXCLUDED.\"ChapterId\", \"UpdatedAt\" = now()", ct);
     }
 }
