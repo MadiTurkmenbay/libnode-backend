@@ -11,5 +11,7 @@ public record ChapterDetailDto(
     int ChapterNumber,
     DateTime CreatedAt,
     int LikesCount,
-    bool IsLikedByCurrentUser
+    bool IsLikedByCurrentUser,
+    Guid? PreviousChapterId,
+    Guid? NextChapterId
 );

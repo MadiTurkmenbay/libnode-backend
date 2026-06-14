@@ -16,6 +16,10 @@ public class DatabaseFixture : IAsyncLifetime
         using var scope = Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await context.Database.MigrateAsync();
+        // Очищаем данные от предыдущих запусков тестового процесса, сохраняя схему.
+        await context.Database.ExecuteSqlRawAsync("""
+            TRUNCATE TABLE "BookTag", "BookCategory", "CollectionBooks", "ChapterLikes", "ReadingProgresses", "UserCollections", "Chapters", "Books", "Users", "Tags", "Categories" CASCADE;
+        """);
     }
 
     public async Task DisposeAsync()

@@ -8,8 +8,8 @@ namespace LibNode.Api.Services;
 /// </summary>
 public interface IBookService
 {
-    /// <summary>Получить список книг с курсорной пагинацией (новые → старые).</summary>
-    Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(GetBooksQueryDto query, Guid? userId = null, CancellationToken ct = default);
+    /// <summary>Получить список книг с курсорной пагинацией для активных режимов сортировки.</summary>
+    Task<CursorStringPagedResult<BookDto>> GetAllAsync(GetBooksQueryDto query, Guid? userId = null, CancellationToken ct = default);
 
     /// <summary>Получить список книг с offset-пагинацией и произвольной сортировкой.</summary>
     Task<PagedResult<BookDto>> GetAllWithOffsetAsync(GetBooksQueryDto query, Guid? userId = null, CancellationToken ct = default);

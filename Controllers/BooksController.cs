@@ -36,10 +36,12 @@ public class BooksController : ControllerBase
     }
 
     /// <summary>
-    /// Получить список книг с пагинацией.
-    /// Если задан SortBy — offset pagination (PagedResult), иначе — cursor pagination (CursorPagedResult).
+    /// Получить список книг с курсорной пагинацией.
+    /// Поддерживает сортировки CreatedAt (по умолчанию), UpdatedAt и Title.
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(CursorStringPagedResult<BookDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAll(
         [FromQuery] GetBooksQueryDto query,
         CancellationToken ct = default)
@@ -50,14 +52,15 @@ public class BooksController : ControllerBase
 
         var normalizedQuery = query with { Limit = normalizedLimit };
 
-        if (normalizedQuery.SortBy.HasValue)
+        try
         {
-            var pagedResult = await _bookService.GetAllWithOffsetAsync(normalizedQuery, TryGetCurrentUserId(), ct);
-            return Ok(pagedResult);
+            var cursorResult = await _bookService.GetAllAsync(normalizedQuery, TryGetCurrentUserId(), ct);
+            return Ok(cursorResult);
         }
-
-        var cursorResult = await _bookService.GetAllAsync(normalizedQuery, TryGetCurrentUserId(), ct);
-        return Ok(cursorResult);
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// <summary>

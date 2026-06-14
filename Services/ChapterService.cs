@@ -65,20 +65,51 @@ public class ChapterService : IChapterService
 
     public async Task<ChapterDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)
     {
-        return await _db.Chapters
+        var chapter = await _db.Chapters
             .AsNoTracking()
             .Where(c => c.Id == id)
-            .Select(c => new ChapterDetailDto(
+            .Select(c => new
+            {
                 c.Id,
                 c.BookId,
                 c.Title,
                 c.Content,
                 c.ChapterNumber,
                 c.CreatedAt,
-                c.Likes.Count(),
-                userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value)
-            ))
+                LikesCount = c.Likes.Count(),
+                IsLikedByCurrentUser = userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value)
+            })
             .FirstOrDefaultAsync(ct);
+
+        if (chapter is null)
+            return null;
+
+        var previousId = await _db.Chapters
+            .AsNoTracking()
+            .Where(c => c.BookId == chapter.BookId && c.ChapterNumber < chapter.ChapterNumber)
+            .OrderByDescending(c => c.ChapterNumber)
+            .Select(c => c.Id)
+            .FirstOrDefaultAsync(ct);
+
+        var nextId = await _db.Chapters
+            .AsNoTracking()
+            .Where(c => c.BookId == chapter.BookId && c.ChapterNumber > chapter.ChapterNumber)
+            .OrderBy(c => c.ChapterNumber)
+            .Select(c => c.Id)
+            .FirstOrDefaultAsync(ct);
+
+        return new ChapterDetailDto(
+            chapter.Id,
+            chapter.BookId,
+            chapter.Title,
+            chapter.Content,
+            chapter.ChapterNumber,
+            chapter.CreatedAt,
+            chapter.LikesCount,
+            chapter.IsLikedByCurrentUser,
+            previousId == Guid.Empty ? null : previousId,
+            nextId == Guid.Empty ? null : nextId
+        );
     }
 
     public async Task<ChapterDetailDto> CreateAsync(CreateChapterDto dto, CancellationToken ct = default)
@@ -107,7 +138,9 @@ public class ChapterService : IChapterService
             chapter.ChapterNumber,
             chapter.CreatedAt,
             0,
-            false
+            false,
+            null,
+            null
         );
     }
 

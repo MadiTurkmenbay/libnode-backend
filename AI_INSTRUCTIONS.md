@@ -26,8 +26,9 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 
 ### Cursor Pagination — единственный нормальный стандарт
 
-- [CRITICAL] Все новые списочные endpoint'ы обязаны использовать `CursorPagedResult<T, TCursor>`.
-- [CRITICAL] Для каталога книг курсор основан на `Guid`-идентификаторе, а порядок — `OrderByDescending(Id)`. Это опирается на UUIDv7 и должно сохраняться.
+- [CRITICAL] Все новые списочные endpoint'ы обязаны использовать `CursorPagedResult<T, TCursor>` или `CursorStringPagedResult<T>`.
+- [CRITICAL] Для каталога книг используется `CursorStringPagedResult<T>` с сортировкой по `CreatedAt` (по умолчанию), `UpdatedAt` или `Title`. Курсор — строка `sortValue|id`, где `id` — `Guid`-tie-breaker. Порядок по умолчанию — descending (новые сначала).
+- [CRITICAL] `CursorPagedResult<T, TCursor>` остаётся для строго типизированных курсоров (например, `ChapterNumber` с `sortDesc`). `CursorStringPagedResult<T>` введён для сортировок по `DateTime`/`string`, потому что `CursorPagedResult<T, TCursor>` ограничен `struct`.
 - [MANDATORY] Для курсорной выборки используй шаблон: фильтр по курсору -> сортировка -> `Take(limit + 1)` -> вычисление `HasMore` -> удаление лишнего элемента -> вычисление `NextCursor` по последнему реально возвращаемому элементу.
 - [MANDATORY] Для глав курсор основан на `ChapterNumber` (`int`) с поддержкой `sortDesc`.
 - [FORBIDDEN] Вводить `Skip/Take`-based offset pagination в новые API “для простоты”.
@@ -83,6 +84,7 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 
 - [CRITICAL] Генерация `Guid.CreateVersion7()` централизована в `AppDbContext.AddAuditInfo()`. Новые сущности с `Id` не должны получать ID вручную без крайней необходимости.
 - [CRITICAL] `CreatedAt`, `UpdatedAt`, `AddedAt` выставляются централизованно в `SaveChanges/SaveChangesAsync`. Не дублируй это в сервисах, контроллерах или DTO-mapper'ах.
+- [MANDATORY] `AddAuditInfo` не перезаписывает явно заданные `CreatedAt`/`AddedAt` при добавлении сущности и не перезаписывает `UpdatedAt`, если он был явно изменён вызывающей стороной. Это позволяет тестам и импортам задавать предметные даты безопасно, сохраняя физический `updatedAt` при обычных мутациях.
 - [FORBIDDEN] Обходить `SaveChanges`-хуки сырыми bulk-операциями, если это ломает автоматическое выставление audit-полей/UUIDv7.
 - [MANDATORY] Fluent API в `OnModelCreating` — источник истины для индексов, `IsRequired`, `MaxLength`, composite keys, внешних ключей и cascade behavior.
 - [MANDATORY] SQL-defaults (`gen_random_uuid()`, `now()`) считаются safety net на стороне БД, но прикладной код всё равно обязан уважать централизованный lifecycle через `AppDbContext`.

@@ -323,13 +323,21 @@ public class AppDbContext : DbContext
                 var createdAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "CreatedAt");
                 if (createdAtProp != null)
                 {
-                    createdAtProp.CurrentValue = now;
+                    var currentCreatedAt = createdAtProp.CurrentValue as DateTime?;
+                    if (!currentCreatedAt.HasValue || currentCreatedAt.Value == default)
+                    {
+                        createdAtProp.CurrentValue = now;
+                    }
                 }
 
                 var addedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "AddedAt");
                 if (addedAtProp != null)
                 {
-                    addedAtProp.CurrentValue = now;
+                    var currentAddedAt = addedAtProp.CurrentValue as DateTime?;
+                    if (!currentAddedAt.HasValue || currentAddedAt.Value == default)
+                    {
+                        addedAtProp.CurrentValue = now;
+                    }
                 }
 
                 var updatedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt");
@@ -341,7 +349,7 @@ public class AppDbContext : DbContext
             else if (entry.State == EntityState.Modified)
             {
                 var updatedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt");
-                if (updatedAtProp != null)
+                if (updatedAtProp != null && !updatedAtProp.IsModified)
                 {
                     updatedAtProp.CurrentValue = now;
                 }

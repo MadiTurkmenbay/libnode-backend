@@ -4,7 +4,12 @@ namespace LibNode.Api.Models.DTOs;
 
 public record GetBooksQueryDto
 {
-    public Guid? Cursor { get; init; }
+    /// <summary>
+    /// Курсорная строка для пагинации. Формат зависит от сортировки:
+    /// для CreatedAt/UpdatedAt — "yyyy-MM-ddTHH:mm:ss.fffffffzzz|id";
+    /// для Title — "title|id".
+    /// </summary>
+    public string? Cursor { get; init; }
     public int Limit { get; init; } = 20;
     public int Page { get; init; } = 1;
     public string? Search { get; init; }

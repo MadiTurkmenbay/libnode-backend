@@ -1,3 +1,4 @@
+using System.Globalization;
 using LibNode.Api.Data;
 using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
@@ -12,6 +13,9 @@ namespace LibNode.Api.Services;
 /// </summary>
 public class BookService : IBookService
 {
+    private const char CursorSeparator = '|';
+    private const string CursorDateFormat = "o";
+
     private readonly AppDbContext _db;
 
     public BookService(AppDbContext db)
@@ -20,20 +24,22 @@ public class BookService : IBookService
     }
 
     /// <inheritdoc />
-    public async Task<CursorPagedResult<BookDto, Guid>> GetAllAsync(GetBooksQueryDto query, Guid? userId = null, CancellationToken ct = default)
+    public async Task<CursorStringPagedResult<BookDto>> GetAllAsync(GetBooksQueryDto query, Guid? userId = null, CancellationToken ct = default)
     {
         var booksQuery = ApplyFilters(_db.Books.AsNoTracking(), query);
 
-        if (query.Cursor.HasValue)
+        var sortBy = query.SortBy ?? BookSortBy.CreatedAt;
+        var descending = IsDescending(query.SortDirection);
+
+        if (!string.IsNullOrWhiteSpace(query.Cursor))
         {
-            booksQuery = booksQuery.Where(b => b.Id < query.Cursor.Value);
+            var cursor = ParseBookCursor(query.Cursor, sortBy);
+            booksQuery = ApplyCursorFilter(booksQuery, sortBy, descending, cursor);
         }
 
-        var orderedQuery = booksQuery
-            .OrderByDescending(b => b.Id)
-            .Take(query.Limit + 1);
+        var orderedQuery = ApplySorting(booksQuery, sortBy, descending);
 
-        var items = await ProjectBooks(orderedQuery, userId, ct);
+        var items = await ProjectBooks(orderedQuery.Take(query.Limit + 1), userId, ct);
 
         var hasMore = items.Count > query.Limit;
 
@@ -42,9 +48,9 @@ public class BookService : IBookService
             items.RemoveAt(items.Count - 1);
         }
 
-        var nextCursor = hasMore ? items[^1].Id : (Guid?)null;
+        var nextCursor = hasMore ? EncodeBookCursor(items[^1], sortBy) : null;
 
-        return new CursorPagedResult<BookDto, Guid>(items, nextCursor, hasMore);
+        return new CursorStringPagedResult<BookDto>(items, nextCursor, hasMore);
     }
 
     /// <inheritdoc />
@@ -54,7 +60,9 @@ public class BookService : IBookService
 
         var totalCount = await booksQuery.CountAsync(ct);
 
-        var orderedQuery = ApplySorting(booksQuery, query.SortBy, query.SortDirection);
+        var sortBy = query.SortBy ?? BookSortBy.CreatedAt;
+        var descending = IsDescending(query.SortDirection);
+        var orderedQuery = ApplySorting(booksQuery, sortBy, descending);
 
         var page = Math.Max(1, query.Page);
         var skip = (page - 1) * query.Limit;
@@ -184,6 +192,9 @@ public class BookService : IBookService
 
     // ── Private helpers ──────────────────────────────────────
 
+    private static bool IsDescending(string? sortDirection) =>
+        !string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+
     private static IQueryable<Book> ApplyFilters(IQueryable<Book> booksQuery, GetBooksQueryDto query)
     {
         var search = query.Search?.Trim();
@@ -230,10 +241,8 @@ public class BookService : IBookService
         return booksQuery;
     }
 
-    private static IOrderedQueryable<Book> ApplySorting(IQueryable<Book> query, BookSortBy? sortBy, string? sortDirection)
+    private static IOrderedQueryable<Book> ApplySorting(IQueryable<Book> query, BookSortBy sortBy, bool descending)
     {
-        var descending = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase);
-
         return sortBy switch
         {
             BookSortBy.Title => descending
@@ -249,6 +258,78 @@ public class BookService : IBookService
                 ? query.OrderByDescending(b => b.CreatedAt).ThenByDescending(b => b.Id)
                 : query.OrderBy(b => b.CreatedAt).ThenBy(b => b.Id),
         };
+    }
+
+    private static IQueryable<Book> ApplyCursorFilter(IQueryable<Book> query, BookSortBy sortBy, bool descending, BookCursor cursor)
+    {
+        return sortBy switch
+        {
+            BookSortBy.Title => descending
+                ? query.Where(b =>
+                    b.Title.CompareTo(cursor.StringValue) < 0 ||
+                    (b.Title == cursor.StringValue && b.Id.CompareTo(cursor.Id) < 0))
+                : query.Where(b =>
+                    b.Title.CompareTo(cursor.StringValue) > 0 ||
+                    (b.Title == cursor.StringValue && b.Id.CompareTo(cursor.Id) > 0)),
+
+            BookSortBy.UpdatedAt => descending
+                ? query.Where(b =>
+                    b.UpdatedAt < cursor.DateValue ||
+                    (b.UpdatedAt == cursor.DateValue && b.Id.CompareTo(cursor.Id) < 0))
+                : query.Where(b =>
+                    b.UpdatedAt > cursor.DateValue ||
+                    (b.UpdatedAt == cursor.DateValue && b.Id.CompareTo(cursor.Id) > 0)),
+
+            // CreatedAt и default
+            _ => descending
+                ? query.Where(b =>
+                    b.CreatedAt < cursor.DateValue ||
+                    (b.CreatedAt == cursor.DateValue && b.Id.CompareTo(cursor.Id) < 0))
+                : query.Where(b =>
+                    b.CreatedAt > cursor.DateValue ||
+                    (b.CreatedAt == cursor.DateValue && b.Id.CompareTo(cursor.Id) > 0)),
+        };
+    }
+
+    private static BookCursor ParseBookCursor(string cursor, BookSortBy sortBy)
+    {
+        var lastSeparatorIndex = cursor.LastIndexOf(CursorSeparator);
+        if (lastSeparatorIndex < 0 || lastSeparatorIndex == cursor.Length - 1)
+        {
+            throw new ArgumentException("Invalid cursor format: missing separator or ID.", nameof(cursor));
+        }
+
+        var valuePart = cursor.Substring(0, lastSeparatorIndex);
+        var idPart = cursor.Substring(lastSeparatorIndex + 1);
+
+        if (!Guid.TryParse(idPart, out var id))
+        {
+            throw new ArgumentException("Invalid cursor ID.", nameof(cursor));
+        }
+
+        if (sortBy == BookSortBy.Title)
+        {
+            return new BookCursor(id, stringValue: valuePart);
+        }
+
+        if (!DateTime.TryParse(valuePart, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dateValue))
+        {
+            throw new ArgumentException("Invalid cursor date value.", nameof(cursor));
+        }
+
+        return new BookCursor(id, dateValue: dateValue);
+    }
+
+    private static string EncodeBookCursor(BookDto book, BookSortBy sortBy)
+    {
+        var value = sortBy switch
+        {
+            BookSortBy.Title => book.Title,
+            BookSortBy.UpdatedAt => book.UpdatedAt.ToString(CursorDateFormat, CultureInfo.InvariantCulture),
+            _ => book.CreatedAt.ToString(CursorDateFormat, CultureInfo.InvariantCulture),
+        };
+
+        return $"{value}{CursorSeparator}{book.Id}";
     }
 
     private static async Task<List<BookDto>> ProjectBooks(IQueryable<Book> query, Guid? userId, CancellationToken ct)
@@ -318,5 +399,13 @@ public class BookService : IBookService
             .ToArray()
             ?? [];
     }
-}
 
+    /// <summary>
+    /// Разобранный курсор каталога: значение сортировки + ID книги (tie-breaker).
+    /// </summary>
+    private readonly record struct BookCursor(Guid Id, DateTime? DateValue, string? StringValue)
+    {
+        public BookCursor(Guid id, DateTime dateValue) : this(id, dateValue, null) { }
+        public BookCursor(Guid id, string stringValue) : this(id, null, stringValue) { }
+    }
+}
