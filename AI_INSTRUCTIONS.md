@@ -31,6 +31,7 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [CRITICAL] `CursorPagedResult<T, TCursor>` остаётся для строго типизированных курсоров (например, `ChapterNumber` с `sortDesc`). `CursorStringPagedResult<T>` введён для сортировок по `DateTime`/`string`, потому что `CursorPagedResult<T, TCursor>` ограничен `struct`.
 - [MANDATORY] Для курсорной выборки используй шаблон: фильтр по курсору -> сортировка -> `Take(limit + 1)` -> вычисление `HasMore` -> удаление лишнего элемента -> вычисление `NextCursor` по последнему реально возвращаемому элементу.
 - [MANDATORY] Для глав курсор основан на `ChapterNumber` (`int`) с поддержкой `sortDesc`.
+- [MANDATORY] `ChapterDetailDto` содержит `previousChapterId` и `nextChapterId`, вычисленные на backend по `ChapterNumber`; читалка не должна загружать весь список глав ради навигации.
 - [FORBIDDEN] Вводить `Skip/Take`-based offset pagination в новые API “для простоты”.
 - [FORBIDDEN] Сортировать cursor-ленты по произвольным полям без доказанного стабильного порядка.
 - [MANDATORY] `PagedResult<T>` считать legacy/compatibility-моделью. Новые endpoint'ы на неё не проектировать.
@@ -98,6 +99,12 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [MANDATORY] Создающие endpoint'ы возвращают `CreatedAtAction(...)`, если это соответствует ресурсу.
 - [MANDATORY] Внешние ingest endpoint'ы обязаны быть идемпотентными: повторный `create title` должен возвращать существующий ресурс по slug, а повторная загрузка главы — обновлять/схлопывать запись по `(BookId, ChapterNumber)`.
 - [FORBIDDEN] Возвращать анонимные EF-сущности, навигации или “временные” поля, которых нет в DTO.
+
+## Testing and Regression Harness
+
+- [MANDATORY] Backend regression tests live in `LibNode.Api.Tests/` and must cover critical service/API invariants: EF migrations, collection idempotency/move, reading-progress upsert races, reader chapter neighbors, and catalog cursor pagination.
+- [MANDATORY] Tests run host-local with `dotnet test LibNode.Api.Tests/LibNode.Api.Tests.csproj` or inside the disposable `api-tests` Docker service in `libnode-deployer`.
+- [MANDATORY] Docker-first verification is the final acceptance surface for backend changes; host-local `dotnet` commands are iteration aids only.
 
 ## Production Hardening
 
