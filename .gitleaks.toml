@@ -1,0 +1,39 @@
+# gitleaks config for the libnode backend repo.
+# Run locally:   gitleaks detect --source . --config .gitleaks.toml
+# Pre-commit:    gitleaks protect --staged --config .gitleaks.toml
+# CI gate:       gitleaks detect --no-git --redact (on the checkout)
+#
+# Rationale: a real PostgreSQL credential was historically committed in
+# appsettings.json (commits 06b24db, ea589a3). This config is defense-in-depth
+# so a real secret cannot be committed again.
+
+title = "libnode secret scan"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "dotnet-connection-string-password"
+description = "Password inside an ADO.NET / EF connection string"
+regex = '''(?i)(Password|Pwd)\s*=\s*[^;"'\s]{6,}'''
+tags = ["db", "connection-string"]
+
+[[rules]]
+id = "jwt-signing-key-nonempty"
+description = "Non-empty JwtSettings:Key committed to source"
+regex = '''(?i)"Key"\s*:\s*"[A-Za-z0-9+/=_\-]{16,}"'''
+tags = ["jwt", "secret"]
+
+[allowlist]
+description = "Placeholders, examples, and generated/vendor paths are not secrets"
+paths = [
+  '''appsettings\.Development\.json''',
+  '''.*\.example$''',
+  '''(^|/)bin/''',
+  '''(^|/)obj/''',
+]
+regexes = [
+  # empty-string placeholders that the repo intentionally ships
+  '''"(Key|TranslatorApiKey|DefaultConnection)"\s*:\s*""''',
+  '''(?i)Password=(<HIDDEN>|changeme|placeholder|REPLACE_ME|\$\{[^}]+\})''',
+]
