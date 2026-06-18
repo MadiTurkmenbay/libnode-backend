@@ -12,11 +12,13 @@ public class ReadingProgressService : IReadingProgressService
 {
     private readonly AppDbContext _db;
     private readonly IGamificationService _gamification;
+    private readonly IStorageService _storage;
 
-    public ReadingProgressService(AppDbContext db, IGamificationService gamification)
+    public ReadingProgressService(AppDbContext db, IGamificationService gamification, IStorageService storage)
     {
         _db = db;
         _gamification = gamification;
+        _storage = storage;
     }
 
     public async Task UpsertProgressAsync(Guid userId, Guid bookId, Guid chapterId, CancellationToken ct = default)
@@ -122,7 +124,7 @@ public class ReadingProgressService : IReadingProgressService
     public async Task<IReadOnlyList<ContinueReadingDto>> GetContinueReadingAsync(Guid userId, int limit, CancellationToken ct = default)
     {
         var take = limit <= 0 ? 12 : Math.Min(limit, 24);
-        return await _db.ReadingProgresses
+        var items = await _db.ReadingProgresses
             .AsNoTracking()
             .Where(rp => rp.UserId == userId)
             .OrderByDescending(rp => rp.UpdatedAt)
@@ -135,5 +137,10 @@ public class ReadingProgressService : IReadingProgressService
                 rp.Chapter.ChapterNumber,
                 rp.UpdatedAt))
             .ToListAsync(ct);
+
+        // Ключ обложки → абсолютный URL (в памяти).
+        return items
+            .Select(x => x with { CoverUrl = x.CoverUrl == null ? null : _storage.ResolveUrl(x.CoverUrl) })
+            .ToList();
     }
 }

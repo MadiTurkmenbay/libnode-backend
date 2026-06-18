@@ -45,7 +45,7 @@ public class BookServiceTests
         context.Books.AddRange(books);
         await context.SaveChangesAsync();
 
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
         var result = await service.GetAllAsync(new GetBooksQueryDto { Limit = 2 });
 
         Assert.Equal(2, result.Items.Count);
@@ -68,7 +68,7 @@ public class BookServiceTests
         context.Books.AddRange(books);
         await context.SaveChangesAsync();
 
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
         var result = await service.GetAllAsync(new GetBooksQueryDto
         {
             Limit = 2,
@@ -100,7 +100,7 @@ public class BookServiceTests
         books[1].UpdatedAt = now.AddHours(-2);
         await context.SaveChangesAsync();
 
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
         var result = await service.GetAllAsync(new GetBooksQueryDto
         {
             Limit = 1,
@@ -127,7 +127,7 @@ public class BookServiceTests
         context.Books.AddRange(books);
         await context.SaveChangesAsync();
 
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
         var result = await service.GetAllAsync(new GetBooksQueryDto
         {
             Limit = 2,
@@ -151,7 +151,7 @@ public class BookServiceTests
         context.Books.AddRange(book1, book2);
         await context.SaveChangesAsync();
 
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
         var firstPage = await service.GetAllAsync(new GetBooksQueryDto
         {
             Limit = 1,
@@ -180,7 +180,7 @@ public class BookServiceTests
     public async Task GetAllAsync_InvalidCursor_ThrowsArgumentException()
     {
         await using var context = CreateInMemoryContext();
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.GetAllAsync(new GetBooksQueryDto { Cursor = "not-a-cursor" }));
@@ -200,7 +200,7 @@ public class BookServiceTests
         context.Books.AddRange(books);
         await context.SaveChangesAsync();
 
-        var service = new BookService(context);
+        var service = new BookService(context, new FakeStorageService());
         var result = await service.GetAllAsync(new GetBooksQueryDto
         {
             Limit = 1,

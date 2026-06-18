@@ -40,6 +40,9 @@ public class StorageService : IStorageService
 
     public bool IsConfigured => _s3 != null;
 
+    /// <summary>Публичный префикс "{PublicUrl}/{Bucket}/" или пустая строка, если не настроено.</summary>
+    public string PublicBase => _s3 == null ? string.Empty : $"{_publicUrl}/{_bucket}/";
+
     public async Task<string> UploadAsync(Stream content, string contentType, string keyPrefix, string fileExtension, CancellationToken ct = default)
     {
         if (_s3 == null)
@@ -61,18 +64,40 @@ public class StorageService : IStorageService
             AutoCloseStream = false,
         }, ct);
 
-        return $"{_publicUrl}/{_bucket}/{key}";
+        // Возвращаем КЛЮЧ объекта (а не абсолютный URL): он и хранится в БД.
+        return key;
     }
 
-    public async Task DeleteAsync(string? publicUrl, CancellationToken ct = default)
+    /// <summary>
+    /// Собрать абсолютный публичный URL из ключа. Пустой ключ → пустая строка;
+    /// уже абсолютный (http*) ключ → как есть; ненастроенное хранилище → ключ без изменений.
+    /// </summary>
+    public string ResolveUrl(string? key)
     {
-        if (_s3 == null || string.IsNullOrWhiteSpace(publicUrl)) return;
+        if (string.IsNullOrWhiteSpace(key)) return string.Empty;
+        if (key.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || key.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return key; // внешний/легаси абсолютный URL — отдаём без изменений
+        return _s3 == null ? key : $"{_publicUrl}/{_bucket}/{key}";
+    }
 
-        // Удаляем только объекты ИЗ нашего хранилища (по совпадению публичного префикса).
+    public async Task DeleteAsync(string? key, CancellationToken ct = default)
+    {
+        if (_s3 == null || string.IsNullOrWhiteSpace(key)) return;
+
+        // Легаси-совместимость: если пришёл абсолютный URL из нашего хранилища — срезаем публичный префикс.
         var prefix = $"{_publicUrl}/{_bucket}/";
-        if (!publicUrl.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return;
+        if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            key = key[prefix.Length..];
+        }
+        else if (key.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                 || key.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            // Абсолютный URL НЕ из нашего хранилища (внешний CDN) — не трогаем.
+            return;
+        }
 
-        var key = publicUrl[prefix.Length..];
         if (string.IsNullOrWhiteSpace(key)) return;
 
         try

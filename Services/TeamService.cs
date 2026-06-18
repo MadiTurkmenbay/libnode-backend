@@ -10,11 +10,13 @@ public class TeamService : ITeamService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notifications;
+    private readonly IStorageService _storage;
 
-    public TeamService(AppDbContext db, INotificationService notifications)
+    public TeamService(AppDbContext db, INotificationService notifications, IStorageService storage)
     {
         _db = db;
         _notifications = notifications;
+        _storage = storage;
     }
 
     // ── Admin ────────────────────────────────────────────
@@ -156,7 +158,12 @@ public class TeamService : ITeamService
             ? team.Members.FirstOrDefault(m => m.UserId == currentUserId.Value)?.Role
             : null;
 
-        return new TeamDetailDto(team.Id, team.Name, team.Slug, team.Description, team.CreatedAt, team.Members, team.Books, myRole, team.IsVerified);
+        // Ключи обложек → абсолютные URL (в памяти).
+        var books = team.Books
+            .Select(b => b with { CoverUrl = b.CoverUrl == null ? null : _storage.ResolveUrl(b.CoverUrl) })
+            .ToList();
+
+        return new TeamDetailDto(team.Id, team.Name, team.Slug, team.Description, team.CreatedAt, team.Members, books, myRole, team.IsVerified);
     }
 
     public async Task<IReadOnlyList<TeamDto>> GetMyTeamsAsync(Guid userId, CancellationToken ct = default)

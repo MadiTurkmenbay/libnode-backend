@@ -9,10 +9,12 @@ namespace LibNode.Api.Services;
 public class ShelfService : IShelfService
 {
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public ShelfService(AppDbContext db)
+    public ShelfService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
 
     public async Task UpsertAsync(Guid userId, Guid bookId, ShelfStatus status, CancellationToken ct = default)
@@ -56,7 +58,7 @@ public class ShelfService : IShelfService
         var query = _db.BookShelves.AsNoTracking().Where(s => s.UserId == userId);
         if (status.HasValue) query = query.Where(s => s.Status == status.Value);
 
-        return await query
+        var items = await query
             .OrderByDescending(s => s.UpdatedAt)
             .Select(s => new ShelfItemDto(
                 s.Status,
@@ -77,5 +79,17 @@ public class ShelfService : IShelfService
                     s.Book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
                     s.Book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList())))
             .ToListAsync(ct);
+
+        // Ключи обложек → абсолютные URL (в памяти, EF-безопасно).
+        return items
+            .Select(s => s with
+            {
+                Book = s.Book with
+                {
+                    CoverUrl = s.Book.CoverUrl == null ? null : _storage.ResolveUrl(s.Book.CoverUrl),
+                    CoverThumbUrl = s.Book.CoverThumbUrl == null ? null : _storage.ResolveUrl(s.Book.CoverThumbUrl),
+                },
+            })
+            .ToList();
     }
 }

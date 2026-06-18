@@ -17,11 +17,24 @@ public class BookService : IBookService
     private const string CursorDateFormat = "o";
 
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public BookService(AppDbContext db)
+    public BookService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
+
+    /// <summary>
+    /// Заменяет ключи обложек в DTO на абсолютные публичные URL (в памяти, после материализации).
+    /// EF-проекции хранят сырой ключ; склейка URL делается здесь единообразно.
+    /// </summary>
+    private BookDto ResolveCovers(BookDto b) =>
+        b with
+        {
+            CoverUrl = b.CoverUrl == null ? null : _storage.ResolveUrl(b.CoverUrl),
+            CoverThumbUrl = b.CoverThumbUrl == null ? null : _storage.ResolveUrl(b.CoverThumbUrl),
+        };
 
     /// <inheritdoc />
     public async Task<CursorStringPagedResult<BookDto>> GetAllAsync(GetBooksQueryDto query, Guid? userId = null, CancellationToken ct = default)
@@ -145,6 +158,13 @@ public class BookService : IBookService
             await _db.Books
                 .Where(b => b.Id == id)
                 .ExecuteUpdateAsync(s => s.SetProperty(b => b.ViewCount, b => b.ViewCount + 1), ct);
+
+            // Ключи обложек → абсолютные URL (в памяти).
+            result = result with
+            {
+                CoverUrl = result.CoverUrl == null ? null : _storage.ResolveUrl(result.CoverUrl),
+                CoverThumbUrl = result.CoverThumbUrl == null ? null : _storage.ResolveUrl(result.CoverThumbUrl),
+            };
         }
 
         return result;
@@ -190,7 +210,7 @@ public class BookService : IBookService
         _db.Books.Add(book);
         await _db.SaveChangesAsync(ct);
 
-        return new BookDto(
+        return ResolveCovers(new BookDto(
             book.Id,
             book.Title,
             book.Description,
@@ -205,7 +225,7 @@ public class BookService : IBookService
             null,
             book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
             book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
-        );
+        ));
     }
 
     public async Task<BookDto?> UpdateAsync(Guid id, UpdateBookDto dto, CancellationToken ct = default)
@@ -223,7 +243,7 @@ public class BookService : IBookService
         await _db.SaveChangesAsync(ct);
 
         var chapterCount = await _db.Chapters.CountAsync(c => c.BookId == id && c.IsPublished, ct);
-        return new BookDto(
+        return ResolveCovers(new BookDto(
             book.Id,
             book.Title,
             book.Description,
@@ -238,7 +258,7 @@ public class BookService : IBookService
             null,
             new List<TagDto>(),
             new List<CategoryDto>()
-        );
+        ));
     }
 
     // ── Private helpers ──────────────────────────────────────
@@ -388,13 +408,14 @@ public class BookService : IBookService
         return $"{value}{CursorSeparator}{book.Id}";
     }
 
-    private static async Task<List<BookDto>> ProjectBooks(IQueryable<Book> query, Guid? userId, CancellationToken ct)
+    private async Task<List<BookDto>> ProjectBooks(IQueryable<Book> query, Guid? userId, CancellationToken ct)
     {
+        List<BookDto> items;
         if (userId.HasValue)
         {
             var currentUserId = userId.Value;
 
-            return await query
+            items = await query
                 .Select(b => new BookDto(
                     b.Id,
                     b.Title,
@@ -420,9 +441,12 @@ public class BookService : IBookService
                     b.Ratings.Count
                 ))
                 .ToListAsync(ct);
+
+            for (var i = 0; i < items.Count; i++) items[i] = ResolveCovers(items[i]);
+            return items;
         }
 
-        return await query
+        items = await query
             .Select(b => new BookDto(
                 b.Id,
                 b.Title,
@@ -442,6 +466,9 @@ public class BookService : IBookService
                 b.Ratings.Count
             ))
             .ToListAsync(ct);
+
+        for (var i = 0; i < items.Count; i++) items[i] = ResolveCovers(items[i]);
+        return items;
     }
 
     private static TEnum[] NormalizeEnums<TEnum>(IEnumerable<TEnum>? values) where TEnum : struct, Enum

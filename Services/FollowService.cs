@@ -11,10 +11,12 @@ public class FollowService : IFollowService
 {
     private const int MaxLimit = 50;
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public FollowService(AppDbContext db)
+    public FollowService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
 
     private Task<int> FollowerCountAsync(FollowTargetType type, Guid targetId, CancellationToken ct) =>
@@ -101,6 +103,11 @@ public class FollowService : IFollowService
         var hasMore = rows.Count > take;
         if (hasMore) rows.RemoveAt(rows.Count - 1);
         Guid? next = hasMore && rows.Count > 0 ? rows[^1].ChapterId : null;
-        return new CursorPagedResult<FeedItemDto, Guid>(rows, next, hasMore);
+
+        // Ключ превью обложки → абсолютный URL (в памяти).
+        var resolved = rows
+            .Select(r => r with { CoverThumbUrl = r.CoverThumbUrl == null ? null : _storage.ResolveUrl(r.CoverThumbUrl) })
+            .ToList();
+        return new CursorPagedResult<FeedItemDto, Guid>(resolved, next, hasMore);
     }
 }

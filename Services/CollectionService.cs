@@ -9,10 +9,12 @@ namespace LibNode.Api.Services;
 public class CollectionService : ICollectionService
 {
     private readonly AppDbContext _context;
+    private readonly IStorageService _storage;
 
-    public CollectionService(AppDbContext context)
+    public CollectionService(AppDbContext context, IStorageService storage)
     {
         _context = context;
+        _storage = storage;
     }
 
     public async Task<CollectionDto> CreateCollectionAsync(Guid userId, CreateCollectionDto dto)
@@ -71,8 +73,8 @@ public class CollectionService : ICollectionService
                 cb.Book!.Id,
                 cb.Book.Title,
                 cb.Book.Description,
-                cb.Book.CoverUrl,
-                cb.Book.CoverThumbUrl,
+                cb.Book.CoverUrl == null ? null : _storage.ResolveUrl(cb.Book.CoverUrl),
+                cb.Book.CoverThumbUrl == null ? null : _storage.ResolveUrl(cb.Book.CoverThumbUrl),
                 cb.Book.Type,
                 cb.Book.OriginalStatus,
                 cb.Book.TranslationStatus,

@@ -10,10 +10,12 @@ public class RatingService : IRatingService
 {
     private const int MaxLimit = 50;
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public RatingService(AppDbContext db)
+    public RatingService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
 
     public async Task<RatingAggregateDto> UpsertAsync(Guid userId, Guid bookId, short value, string? review, CancellationToken ct = default)
@@ -95,6 +97,11 @@ public class RatingService : IRatingService
         var hasMore = rows.Count > take;
         if (hasMore) rows.RemoveAt(rows.Count - 1);
         DateTime? next = hasMore && rows.Count > 0 ? rows[^1].UpdatedAt : null;
-        return new CursorPagedResult<ReviewDto, DateTime>(rows, next, hasMore);
+
+        // Ключ превью аватара автора → абсолютный URL (в памяти).
+        var resolved = rows
+            .Select(r => r with { AvatarThumbUrl = r.AvatarThumbUrl == null ? null : _storage.ResolveUrl(r.AvatarThumbUrl) })
+            .ToList();
+        return new CursorPagedResult<ReviewDto, DateTime>(resolved, next, hasMore);
     }
 }

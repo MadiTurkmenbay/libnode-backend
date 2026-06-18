@@ -41,7 +41,8 @@ public class MediaController : ControllerBase
 
     /// <summary>
     /// Перекодировать оригинал в WebP (валидация по содержимому + удаление EXIF), загрузить его и
-    /// WebP-превью. Бросает исключение ImageSharp, если файл не является корректным изображением
+    /// WebP-превью. Возвращает КЛЮЧИ объектов (то, что хранится в БД), а не абсолютные URL.
+    /// Бросает исключение ImageSharp, если файл не является корректным изображением
     /// (ловится в контроллере → 400).
     /// </summary>
     private async Task<(string Full, string? Thumb)> UploadWithThumbAsync(
@@ -69,6 +70,9 @@ public class MediaController : ControllerBase
         }
         return (full, thumb);
     }
+
+    /// <summary>Ключ → абсолютный URL для ответа клиенту; сохраняет null (а не "") для отсутствующего превью.</summary>
+    private string? ResolveOrNull(string? key) => key == null ? null : _storage.ResolveUrl(key);
 
     private Guid GetUserId()
     {
@@ -114,13 +118,14 @@ public class MediaController : ControllerBase
         var error = ValidateFile(file);
         if (error != null) return error;
 
-        (string url, string? thumb) result;
+        (string key, string? thumbKey) result;
         try { result = await UploadWithThumbAsync(file!, "uploads", 1600, 300, ct); }
         catch (UnknownImageFormatException) { return BadRequest(new { error = "Файл не является корректным изображением." }); }
         catch (InvalidImageContentException) { return BadRequest(new { error = "Файл повреждён или не является изображением." }); }
         catch (ImageTooLargeException ex) { return BadRequest(new { error = ex.Message }); }
 
-        return Ok(new { url = result.url, thumbUrl = result.thumb });
+        // Ответ клиенту — абсолютные URL (ключи в БД не сохраняются для этого универсального endpoint'а).
+        return Ok(new { url = _storage.ResolveUrl(result.key), thumbUrl = ResolveOrNull(result.thumbKey) });
     }
 
     [HttpPost("api/me/avatar")]
@@ -131,7 +136,7 @@ public class MediaController : ControllerBase
         if (error != null) return error;
 
         var userId = GetUserId();
-        (string url, string? thumb) result;
+        (string key, string? thumbKey) result;
         try { result = await UploadWithThumbAsync(file!, "avatars", 512, 128, ct); }
         catch (UnknownImageFormatException) { return BadRequest(new { error = "Файл не является корректным изображением." }); }
         catch (InvalidImageContentException) { return BadRequest(new { error = "Файл повреждён или не является изображением." }); }
@@ -139,16 +144,18 @@ public class MediaController : ControllerBase
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user == null) return NotFound();
-        var (oldUrl, oldThumb) = (user.AvatarUrl, user.AvatarThumbUrl);
-        user.AvatarUrl = result.url;
-        user.AvatarThumbUrl = result.thumb;
+        // В БД храним КЛЮЧИ объектов; абсолютный URL собирается на чтении.
+        var (oldKey, oldThumbKey) = (user.AvatarUrl, user.AvatarThumbUrl);
+        user.AvatarUrl = result.key;
+        user.AvatarThumbUrl = result.thumbKey;
         await _db.SaveChangesAsync(ct);
 
-        // Чистим прежние объекты (best-effort, no-op для внешних URL).
-        await _storage.DeleteAsync(oldUrl, ct);
-        await _storage.DeleteAsync(oldThumb, ct);
+        // Чистим прежние объекты (best-effort, no-op для внешних URL / легаси-абсолютных значений).
+        await _storage.DeleteAsync(oldKey, ct);
+        await _storage.DeleteAsync(oldThumbKey, ct);
 
-        return Ok(new { avatarUrl = result.url, avatarThumbUrl = result.thumb });
+        // Ответ клиенту — абсолютные URL для немедленного отображения.
+        return Ok(new { avatarUrl = _storage.ResolveUrl(result.key), avatarThumbUrl = ResolveOrNull(result.thumbKey) });
     }
 
     [HttpPost("api/admin/books/{bookId:guid}/cover")]
@@ -165,20 +172,22 @@ public class MediaController : ControllerBase
         var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
         if (book == null) return NotFound();
 
-        (string url, string? thumb) result;
+        (string key, string? thumbKey) result;
         try { result = await UploadWithThumbAsync(file!, "covers", 1200, 300, ct); }
         catch (UnknownImageFormatException) { return BadRequest(new { error = "Файл не является корректным изображением." }); }
         catch (InvalidImageContentException) { return BadRequest(new { error = "Файл повреждён или не является изображением." }); }
         catch (ImageTooLargeException ex) { return BadRequest(new { error = ex.Message }); }
 
-        var (oldUrl, oldThumb) = (book.CoverUrl, book.CoverThumbUrl);
-        book.CoverUrl = result.url;
-        book.CoverThumbUrl = result.thumb;
+        // В БД храним КЛЮЧИ объектов; абсолютный URL собирается на чтении.
+        var (oldKey, oldThumbKey) = (book.CoverUrl, book.CoverThumbUrl);
+        book.CoverUrl = result.key;
+        book.CoverThumbUrl = result.thumbKey;
         await _db.SaveChangesAsync(ct);
 
-        await _storage.DeleteAsync(oldUrl, ct);
-        await _storage.DeleteAsync(oldThumb, ct);
+        await _storage.DeleteAsync(oldKey, ct);
+        await _storage.DeleteAsync(oldThumbKey, ct);
 
-        return Ok(new { coverUrl = result.url, coverThumbUrl = result.thumb });
+        // Ответ клиенту — абсолютные URL для немедленного отображения.
+        return Ok(new { coverUrl = _storage.ResolveUrl(result.key), coverThumbUrl = ResolveOrNull(result.thumbKey) });
     }
 }

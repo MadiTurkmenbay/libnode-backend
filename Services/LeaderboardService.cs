@@ -8,11 +8,15 @@ public class LeaderboardService : ILeaderboardService
 {
     private const int MaxLimit = 50;
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public LeaderboardService(AppDbContext db)
+    public LeaderboardService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
+
+    private string? Avatar(string? key) => key == null ? null : _storage.ResolveUrl(key);
 
     public async Task<LeaderboardDto> GetAsync(int limit, CancellationToken ct = default)
     {
@@ -55,10 +59,10 @@ public class LeaderboardService : ILeaderboardService
             .ToDictionaryAsync(s => s.UserId, s => s.Level, ct);
 
         var topXp = topXpRaw
-            .Select((s, i) => new LeaderboardEntryDto(i + 1, s.UserId, s.Username, s.AvatarUrl, s.Level, s.Value))
+            .Select((s, i) => new LeaderboardEntryDto(i + 1, s.UserId, s.Username, Avatar(s.AvatarUrl), s.Level, s.Value))
             .ToList();
         var topStreak = topStreakRaw
-            .Select((s, i) => new LeaderboardEntryDto(i + 1, s.UserId, s.Username, s.AvatarUrl, s.Level, s.Value))
+            .Select((s, i) => new LeaderboardEntryDto(i + 1, s.UserId, s.Username, Avatar(s.AvatarUrl), s.Level, s.Value))
             .ToList();
         var topCommenters = topCommentersRaw
             .Where(x => commenterMeta.ContainsKey(x.UserId))
@@ -66,7 +70,7 @@ public class LeaderboardService : ILeaderboardService
                 i + 1,
                 x.UserId,
                 commenterMeta[x.UserId].Username,
-                commenterMeta[x.UserId].AvatarUrl,
+                Avatar(commenterMeta[x.UserId].AvatarUrl),
                 levels.TryGetValue(x.UserId, out var lvl) ? lvl : 1,
                 x.Value))
             .ToList();

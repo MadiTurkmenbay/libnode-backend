@@ -50,7 +50,7 @@ public class CollectionServiceTests
         context.UserCollections.Add(collection);
         await context.SaveChangesAsync();
 
-        var service = new CollectionService(context);
+        var service = new CollectionService(context, new FakeStorageService());
         await service.AddBookToCollectionAsync(collection.Id, book.Id, user.Id);
         await service.AddBookToCollectionAsync(collection.Id, book.Id, user.Id);
 
@@ -71,7 +71,7 @@ public class CollectionServiceTests
         context.UserCollections.Add(collectionB);
         await context.SaveChangesAsync();
 
-        var service = new CollectionService(context);
+        var service = new CollectionService(context, new FakeStorageService());
         await service.AddBookToCollectionAsync(collectionA.Id, book.Id, user.Id);
         await service.AddBookToCollectionAsync(collectionB.Id, book.Id, user.Id);
 

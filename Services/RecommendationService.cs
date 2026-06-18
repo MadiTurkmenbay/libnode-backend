@@ -10,11 +10,21 @@ public class RecommendationService : IRecommendationService
 {
     private const int MaxLimit = 24;
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public RecommendationService(AppDbContext db)
+    public RecommendationService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
+
+    /// <summary>Ключи обложек → абсолютные URL (в памяти, после материализации).</summary>
+    private List<BookDto> ResolveCovers(List<BookDto> books) =>
+        books.Select(b => b with
+        {
+            CoverUrl = b.CoverUrl == null ? null : _storage.ResolveUrl(b.CoverUrl),
+            CoverThumbUrl = b.CoverThumbUrl == null ? null : _storage.ResolveUrl(b.CoverThumbUrl),
+        }).ToList();
 
     // Проекция книги в BookDto (с рейтингом). UserProgress не заполняем для рекомендаций.
     private static readonly Expression<Func<Book, BookDto>> Projection = b => new BookDto(
@@ -45,14 +55,14 @@ public class RecommendationService : IRecommendationService
         if (tagIds.Count == 0 && catIds.Count == 0)
             return [];
 
-        return await _db.Books.AsNoTracking()
+        return ResolveCovers(await _db.Books.AsNoTracking()
             .Where(b => b.Id != bookId
                 && (b.Tags.Any(t => tagIds.Contains(t.Id)) || b.Categories.Any(c => catIds.Contains(c.Id))))
             .OrderByDescending(b => b.Tags.Count(t => tagIds.Contains(t.Id)) + b.Categories.Count(c => catIds.Contains(c.Id)))
             .ThenByDescending(b => b.ViewCount)
             .Take(take)
             .Select(Projection)
-            .ToListAsync(ct);
+            .ToListAsync(ct));
     }
 
     public async Task<IReadOnlyList<BookDto>> GetForUserAsync(Guid userId, int limit, CancellationToken ct = default)
@@ -69,12 +79,12 @@ public class RecommendationService : IRecommendationService
         if (readBookIds.Count == 0)
         {
             // Фолбэк: популярное по просмотрам.
-            return await _db.Books.AsNoTracking()
+            return ResolveCovers(await _db.Books.AsNoTracking()
                 .OrderByDescending(b => b.ViewCount)
                 .ThenByDescending(b => b.Id)
                 .Take(take)
                 .Select(Projection)
-                .ToListAsync(ct);
+                .ToListAsync(ct));
         }
 
         var tagIds = await _db.Books.Where(b => readBookIds.Contains(b.Id)).SelectMany(b => b.Tags.Select(t => t.Id)).Distinct().ToListAsync(ct);
@@ -94,6 +104,6 @@ public class RecommendationService : IRecommendationService
             query = query.OrderByDescending(b => b.ViewCount).ThenByDescending(b => b.Id);
         }
 
-        return await query.Take(take).Select(Projection).ToListAsync(ct);
+        return ResolveCovers(await query.Take(take).Select(Projection).ToListAsync(ct));
     }
 }

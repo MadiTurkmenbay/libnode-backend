@@ -23,11 +23,13 @@ public class AuthService : IAuthService
 
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IStorageService _storage;
 
-    public AuthService(AppDbContext db, IConfiguration config)
+    public AuthService(AppDbContext db, IConfiguration config, IStorageService storage)
     {
         _db = db;
         _config = config;
+        _storage = storage;
     }
 
     /// <inheritdoc />
@@ -79,10 +81,17 @@ public class AuthService : IAuthService
     /// <inheritdoc />
     public async Task<UserProfileDto?> GetProfileAsync(Guid userId, CancellationToken ct = default)
     {
-        return await _db.Users.AsNoTracking()
+        var profile = await _db.Users.AsNoTracking()
             .Where(u => u.Id == userId)
             .Select(u => new UserProfileDto(u.Id, u.Username, u.Email, u.Role, u.AvatarUrl, u.AvatarThumbUrl, u.Bio, u.CreatedAt))
             .FirstOrDefaultAsync(ct);
+
+        // Ключи аватара → абсолютные URL (в памяти).
+        return profile is null ? null : profile with
+        {
+            AvatarUrl = profile.AvatarUrl == null ? null : _storage.ResolveUrl(profile.AvatarUrl),
+            AvatarThumbUrl = profile.AvatarThumbUrl == null ? null : _storage.ResolveUrl(profile.AvatarThumbUrl),
+        };
     }
 
     /// <inheritdoc />

@@ -11,11 +11,21 @@ public class RankingService : IRankingService
 {
     private const int MaxLimit = 50;
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public RankingService(AppDbContext db)
+    public RankingService(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
+
+    /// <summary>Ключи обложек → абсолютные URL (в памяти, после материализации).</summary>
+    private List<BookDto> ResolveCovers(List<BookDto> books) =>
+        books.Select(b => b with
+        {
+            CoverUrl = b.CoverUrl == null ? null : _storage.ResolveUrl(b.CoverUrl),
+            CoverThumbUrl = b.CoverThumbUrl == null ? null : _storage.ResolveUrl(b.CoverThumbUrl),
+        }).ToList();
 
     private static readonly Expression<Func<Book, BookDto>> Projection = b => new BookDto(
         b.Id,
@@ -57,6 +67,6 @@ public class RankingService : IRankingService
                 .ThenByDescending(b => b.Id),
         };
 
-        return await ordered.Take(take).Select(Projection).ToListAsync(ct);
+        return ResolveCovers(await ordered.Take(take).Select(Projection).ToListAsync(ct));
     }
 }

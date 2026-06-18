@@ -58,7 +58,7 @@ public class ReadingProgressServiceTests
         var notifications = new NotificationService(context);
         var gamification = new GamificationService(
             context, notifications, new AchievementService(context, notifications), new QuestService(context, notifications));
-        var service = new ReadingProgressService(context, gamification);
+        var service = new ReadingProgressService(context, gamification, new FakeStorageService());
 
         var exception = await Record.ExceptionAsync(async () =>
         {
