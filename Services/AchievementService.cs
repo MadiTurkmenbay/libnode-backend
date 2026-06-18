@@ -3,6 +3,7 @@ using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
 using LibNode.Api.Models.Enums;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace LibNode.Api.Services;
 
@@ -55,23 +56,44 @@ public class AchievementService : IAchievementService
     public async Task EvaluateAsync(Guid userId, bool nightRead = false, CancellationToken ct = default)
     {
         var snapshot = await BuildSnapshotAsync(userId, nightRead, ct);
-        var owned = await _db.UserAchievements
-            .Where(a => a.UserId == userId)
-            .Select(a => a.Key)
-            .ToListAsync(ct);
-        var ownedSet = owned.ToHashSet();
 
-        var newlyUnlocked = new List<Def>();
-        foreach (var def in Catalog)
+        List<Def> newlyUnlocked;
+
+        // Read-then-insert гонка по составному PK (UserId, Key): два конкурентных вызова
+        // оба вставляют одно и то же достижение → 23505. Идемпотентность как в Quest/ReadingProgress:
+        // ловим UniqueViolation, сбрасываем трекинг и перечитываем владение, затем повторяем.
+        while (true)
         {
-            if (ownedSet.Contains(def.Key)) continue;
-            if (!def.Unlocked(snapshot)) continue;
-            _db.UserAchievements.Add(new UserAchievement { UserId = userId, Key = def.Key, UnlockedAt = DateTime.UtcNow });
-            newlyUnlocked.Add(def);
-        }
+            var owned = await _db.UserAchievements
+                .Where(a => a.UserId == userId)
+                .Select(a => a.Key)
+                .ToListAsync(ct);
+            var ownedSet = owned.ToHashSet();
 
-        if (newlyUnlocked.Count == 0) return;
-        await _db.SaveChangesAsync(ct);
+            newlyUnlocked = new List<Def>();
+            foreach (var def in Catalog)
+            {
+                if (ownedSet.Contains(def.Key)) continue;
+                if (!def.Unlocked(snapshot)) continue;
+                _db.UserAchievements.Add(new UserAchievement { UserId = userId, Key = def.Key, UnlockedAt = DateTime.UtcNow });
+                newlyUnlocked.Add(def);
+            }
+
+            if (newlyUnlocked.Count == 0) return;
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                break;
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+            {
+                foreach (var entry in _db.ChangeTracker.Entries<UserAchievement>().ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+            }
+        }
 
         foreach (var def in newlyUnlocked)
         {
@@ -101,4 +123,8 @@ public class AchievementService : IAchievementService
                 unlocked.TryGetValue(d.Key, out var at) ? at : null))
             .ToList();
     }
+
+    private static bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException postgresException
+        && postgresException.SqlState == PostgresErrorCodes.UniqueViolation;
 }

@@ -52,11 +52,12 @@ public class QuotesApiTests
         return (book, chapter, user);
     }
 
-    private HttpClient CreateAuthenticatedClient(Guid userId)
+    private HttpClient CreateAuthenticatedClient(User user)
     {
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", TestAuthHelper.GenerateToken(userId));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            TestAuthHelper.GenerateToken(user.Id, user.Role, user.Email, user.SecurityStamp));
         return client;
     }
 
@@ -75,7 +76,7 @@ public class QuotesApiTests
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var (_, chapter, user) = await SeedAsync(context);
 
-        var client = CreateAuthenticatedClient(user.Id);
+        var client = CreateAuthenticatedClient(user);
         var response = await client.PostAsJsonAsync("/api/quotes", new CreateQuoteDto(chapter.Id, "Selected text", "Context", "Note"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -104,7 +105,7 @@ public class QuotesApiTests
         });
         await context.SaveChangesAsync();
 
-        var client = CreateAuthenticatedClient(user.Id);
+        var client = CreateAuthenticatedClient(user);
         var response = await client.GetAsync("/api/quotes");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -142,7 +143,7 @@ public class QuotesApiTests
         context.Quotes.Add(quote);
         await context.SaveChangesAsync();
 
-        var client = CreateAuthenticatedClient(userB.Id);
+        var client = CreateAuthenticatedClient(userB);
         var response = await client.GetAsync($"/api/quotes/{quote.Id}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -168,7 +169,7 @@ public class QuotesApiTests
         context.Quotes.Add(quote);
         await context.SaveChangesAsync();
 
-        var client = CreateAuthenticatedClient(user.Id);
+        var client = CreateAuthenticatedClient(user);
         var response = await client.DeleteAsync($"/api/quotes/{quote.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
@@ -195,7 +196,7 @@ public class QuotesApiTests
         });
         await context.SaveChangesAsync();
 
-        var client = CreateAuthenticatedClient(user.Id);
+        var client = CreateAuthenticatedClient(user);
         var response = await client.GetAsync($"/api/quotes/by-book/{book.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

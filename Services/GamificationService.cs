@@ -27,12 +27,23 @@ public class GamificationService : IGamificationService
     private async Task<UserStats> GetOrCreateAsync(Guid userId, CancellationToken ct)
     {
         var stats = await _db.UserStats.FirstOrDefaultAsync(s => s.UserId == userId, ct);
-        if (stats == null)
+        if (stats != null)
+            return stats;
+
+        if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
         {
             stats = new UserStats { UserId = userId, Level = 1 };
             _db.UserStats.Add(stats);
+            return stats;
         }
-        return stats;
+
+        // Read-then-insert гонка по PK (UserId): два конкурентных первых вызова
+        // оба вставляют строку → 23505. Идемпотентно гарантируем существование строки
+        // (ON CONFLICT DO NOTHING), затем загружаем её как отслеживаемую сущность.
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO \"UserStats\" (\"UserId\", \"Xp\", \"Level\", \"ChaptersRead\", \"CommentsPosted\", \"CurrentStreak\", \"LongestStreak\", \"CreatedAt\", \"UpdatedAt\") VALUES ({userId}, 0, 1, 0, 0, 0, 0, now(), now()) ON CONFLICT (\"UserId\") DO NOTHING", ct);
+
+        return await _db.UserStats.FirstAsync(s => s.UserId == userId, ct);
     }
 
     public async Task AwardChapterReadAsync(Guid userId, CancellationToken ct = default)
