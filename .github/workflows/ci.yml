@@ -1,0 +1,62 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main, "auto/**", "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: libnode
+          POSTGRES_PASSWORD: libnode
+          POSTGRES_DB: libnode_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U libnode"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Database=libnode_test;Username=libnode;Password=libnode"
+      JwtSettings__Key: "ci-test-signing-key-change-me-32bytes-minimum-0123456789"
+      JwtSettings__Issuer: "LibNode.Api"
+      JwtSettings__Audience: "LibNode.Client"
+      IntegrationAuth__TranslatorApiKey: "ci-test-translator-api-key"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (warnings as info, no -warnaserror)
+        run: dotnet build --no-restore -c Release
+
+      - name: Unit tests
+        run: dotnet test LibNode.Api.Tests/LibNode.Api.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit.trx"
+
+      - name: Integration tests (real Postgres)
+        run: dotnet test LibNode.Api.Tests/LibNode.Api.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: "**/*.trx"
+          if-no-files-found: ignore
