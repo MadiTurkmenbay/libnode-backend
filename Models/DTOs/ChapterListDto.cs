@@ -10,5 +10,6 @@ public record ChapterListDto(
     int ChapterNumber,
     DateTime CreatedAt,
     int LikesCount,
-    bool IsLikedByCurrentUser
+    bool IsLikedByCurrentUser,
+    bool IsPublished = true
 );

@@ -108,28 +108,34 @@ public class ReaderIngestService : IReaderIngestService
                 c => c.BookId == dto.ReaderTitleId && c.ChapterNumber == dto.ChapterNumber,
                 ct);
 
+        Guid chapterId;
+        bool chapterCreated;
+
         if (existing is not null)
         {
             existing.Title = dto.Title;
             existing.Content = dto.Body;
-            await _db.SaveChangesAsync(ct);
-            return (new ReaderResourceDto(existing.Id), false);
+            chapterId = existing.Id;
+            chapterCreated = false;
         }
-
-        var chapter = new Chapter
+        else
         {
-            Id = Guid.CreateVersion7(),
-            BookId = dto.ReaderTitleId,
-            ChapterNumber = dto.ChapterNumber,
-            Title = dto.Title,
-            Content = dto.Body
-        };
+            var chapter = new Chapter
+            {
+                Id = Guid.CreateVersion7(),
+                BookId = dto.ReaderTitleId,
+                ChapterNumber = dto.ChapterNumber,
+                Title = dto.Title,
+                Content = dto.Body
+            };
+            _db.Chapters.Add(chapter);
+            chapterId = chapter.Id;
+            chapterCreated = true;
+        }
 
         try
         {
-            _db.Chapters.Add(chapter);
             await _db.SaveChangesAsync(ct);
-            return (new ReaderResourceDto(chapter.Id), true);
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
@@ -138,9 +144,72 @@ public class ReaderIngestService : IReaderIngestService
                 .FirstAsync(
                     c => c.BookId == dto.ReaderTitleId && c.ChapterNumber == dto.ChapterNumber,
                     ct);
-
-            return (new ReaderResourceDto(conflictChapter.Id), false);
+            chapterId = conflictChapter.Id;
+            chapterCreated = false;
+            conflictChapter.Title = dto.Title;
+            conflictChapter.Content = dto.Body;
+            _db.Chapters.Update(conflictChapter);
+            await _db.SaveChangesAsync(ct);
         }
+
+        if (dto.TeamId is not null && dto.TeamId != Guid.Empty)
+        {
+            var teamExists = await _db.Teams
+                .AsNoTracking()
+                .AnyAsync(t => t.Id == dto.TeamId.Value, ct);
+
+            if (!teamExists)
+            {
+                throw new ArgumentException($"Team with id {dto.TeamId} was not found.");
+            }
+
+            var version = await _db.ChapterVersions
+                .FirstOrDefaultAsync(v => v.ChapterId == chapterId && v.TeamId == dto.TeamId.Value, ct);
+
+            if (version is not null)
+            {
+                version.Title = dto.Title;
+                version.Content = dto.Body;
+                version.Language = dto.Language ?? "ru";
+                version.IsPublished = true;
+                await _db.SaveChangesAsync(ct);
+            }
+            else
+            {
+                version = new ChapterVersion
+                {
+                    Id = Guid.CreateVersion7(),
+                    ChapterId = chapterId,
+                    TeamId = dto.TeamId,
+                    CreatedByUserId = dto.CreatedByUserId,
+                    Title = dto.Title,
+                    Content = dto.Body,
+                    Language = dto.Language ?? "ru",
+                    IsPublished = true,
+                };
+                _db.ChapterVersions.Add(version);
+                try
+                {
+                    await _db.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+                {
+                    // Concurrent insert — update the winner
+                    var existingVersion = await _db.ChapterVersions
+                        .FirstOrDefaultAsync(v => v.ChapterId == chapterId && v.TeamId == dto.TeamId.Value, ct);
+                    if (existingVersion is not null)
+                    {
+                        existingVersion.Title = dto.Title;
+                        existingVersion.Content = dto.Body;
+                        existingVersion.Language = dto.Language ?? "ru";
+                        existingVersion.IsPublished = true;
+                        await _db.SaveChangesAsync(ct);
+                    }
+                }
+            }
+        }
+
+        return (new ReaderResourceDto(chapterId), chapterCreated);
     }
 
     private static BookType MapBookType(string language)

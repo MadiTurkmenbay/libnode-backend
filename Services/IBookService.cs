@@ -19,5 +19,8 @@ public interface IBookService
 
     /// <summary>Создать новую книгу и вернуть её DTO.</summary>
     Task<BookDto> CreateAsync(CreateBookDto dto, CancellationToken ct = default);
+
+    /// <summary>Редактировать метаданные тайтла. Null, если не найден.</summary>
+    Task<BookDto?> UpdateAsync(Guid id, UpdateBookDto dto, CancellationToken ct = default);
 }
 

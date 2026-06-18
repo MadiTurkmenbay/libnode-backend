@@ -2,6 +2,7 @@ using LibNode.Api.Data;
 using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
+using LibNode.Api.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -13,17 +14,25 @@ namespace LibNode.Api.Services;
 public class ChapterService : IChapterService
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService _notifications;
 
-    public ChapterService(AppDbContext db)
+    public ChapterService(AppDbContext db, INotificationService notifications)
     {
         _db = db;
+        _notifications = notifications;
     }
 
-    public async Task<CursorPagedResult<ChapterListDto, int>> GetByBookIdAsync(Guid bookId, int? cursor, int limit = 50, bool sortDesc = true, Guid? userId = null, CancellationToken ct = default)
+    public async Task<CursorPagedResult<ChapterListDto, int>> GetByBookIdAsync(Guid bookId, int? cursor, int limit = 50, bool sortDesc = true, Guid? userId = null, bool includeUnpublished = false, CancellationToken ct = default)
     {
         var query = _db.Chapters
             .AsNoTracking()
             .Where(c => c.BookId == bookId);
+
+        // Черновики видны только команде/админу.
+        if (!includeUnpublished)
+        {
+            query = query.Where(c => c.IsPublished);
+        }
 
         // Курсорная фильтрация по ChapterNumber
         if (cursor.HasValue)
@@ -47,7 +56,8 @@ public class ChapterService : IChapterService
                 c.ChapterNumber,
                 c.CreatedAt,
                 c.Likes.Count(),
-                userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value)
+                userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value),
+                c.IsPublished
             ))
             .ToListAsync(ct);
 
@@ -63,7 +73,7 @@ public class ChapterService : IChapterService
         return new CursorPagedResult<ChapterListDto, int>(items, nextCursor, hasMore);
     }
 
-    public async Task<ChapterDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)
+    public async Task<ChapterDetailDto?> GetByIdAsync(Guid id, Guid? userId = null, bool includeUnpublished = false, CancellationToken ct = default)
     {
         var chapter = await _db.Chapters
             .AsNoTracking()
@@ -76,6 +86,7 @@ public class ChapterService : IChapterService
                 c.Content,
                 c.ChapterNumber,
                 c.CreatedAt,
+                c.IsPublished,
                 LikesCount = c.Likes.Count(),
                 IsLikedByCurrentUser = userId.HasValue && c.Likes.Any(l => l.UserId == userId.Value)
             })
@@ -84,16 +95,24 @@ public class ChapterService : IChapterService
         if (chapter is null)
             return null;
 
-        var previousId = await _db.Chapters
-            .AsNoTracking()
-            .Where(c => c.BookId == chapter.BookId && c.ChapterNumber < chapter.ChapterNumber)
+        // Черновик доступен только команде/админу.
+        if (!chapter.IsPublished && !includeUnpublished)
+            return null;
+
+        var neighborQuery = _db.Chapters.AsNoTracking().Where(c => c.BookId == chapter.BookId);
+        if (!includeUnpublished)
+        {
+            neighborQuery = neighborQuery.Where(c => c.IsPublished);
+        }
+
+        var previousId = await neighborQuery
+            .Where(c => c.ChapterNumber < chapter.ChapterNumber)
             .OrderByDescending(c => c.ChapterNumber)
             .Select(c => c.Id)
             .FirstOrDefaultAsync(ct);
 
-        var nextId = await _db.Chapters
-            .AsNoTracking()
-            .Where(c => c.BookId == chapter.BookId && c.ChapterNumber > chapter.ChapterNumber)
+        var nextId = await neighborQuery
+            .Where(c => c.ChapterNumber > chapter.ChapterNumber)
             .OrderBy(c => c.ChapterNumber)
             .Select(c => c.Id)
             .FirstOrDefaultAsync(ct);
@@ -108,7 +127,8 @@ public class ChapterService : IChapterService
             chapter.LikesCount,
             chapter.IsLikedByCurrentUser,
             previousId == Guid.Empty ? null : previousId,
-            nextId == Guid.Empty ? null : nextId
+            nextId == Guid.Empty ? null : nextId,
+            chapter.IsPublished
         );
     }
 
@@ -124,11 +144,18 @@ public class ChapterService : IChapterService
             BookId = dto.BookId,
             Title = dto.Title,
             Content = dto.Content,
-            ChapterNumber = dto.ChapterNumber
+            ChapterNumber = dto.ChapterNumber,
+            IsPublished = dto.IsPublished
         };
 
         _db.Chapters.Add(chapter);
         await _db.SaveChangesAsync(ct);
+
+        // Уведомляем о новой главе только при публикации (черновики не шлём).
+        if (chapter.IsPublished)
+        {
+            await NotifyNewChapterAsync(dto.BookId, chapter.Id, chapter.Title, ct);
+        }
 
         return new ChapterDetailDto(
             chapter.Id,
@@ -140,8 +167,74 @@ public class ChapterService : IChapterService
             0,
             false,
             null,
-            null
+            null,
+            chapter.IsPublished
         );
+    }
+
+    private async Task NotifyNewChapterAsync(Guid bookId, Guid chapterId, string title, CancellationToken ct)
+    {
+        var bookmarkerIds = await _db.CollectionBooks
+            .Where(cb => cb.BookId == bookId)
+            .Select(cb => cb.Collection.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+        await _notifications.CreateManyAsync(
+            bookmarkerIds,
+            NotificationType.NewChapter,
+            $"Новая глава: {title}",
+            null,
+            $"/books/{bookId}/read/{chapterId}",
+            ct);
+    }
+
+    public async Task<Guid?> GetBookIdAsync(Guid chapterId, CancellationToken ct = default)
+    {
+        var bookId = await _db.Chapters
+            .AsNoTracking()
+            .Where(c => c.Id == chapterId)
+            .Select(c => (Guid?)c.BookId)
+            .FirstOrDefaultAsync(ct);
+        return bookId;
+    }
+
+    public async Task<ChapterDetailDto?> UpdateAsync(Guid id, UpdateChapterDto dto, CancellationToken ct = default)
+    {
+        var chapter = await _db.Chapters.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (chapter is null) return null;
+
+        var wasPublished = chapter.IsPublished;
+
+        chapter.Title = dto.Title;
+        chapter.Content = dto.Content;
+        chapter.ChapterNumber = dto.ChapterNumber;
+        chapter.IsPublished = dto.IsPublished;
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            throw new InvalidOperationException("Глава с таким номером уже существует в книге.");
+        }
+
+        // Публикация черновика → уведомляем подписчиков (закладки).
+        if (!wasPublished && chapter.IsPublished)
+        {
+            await NotifyNewChapterAsync(chapter.BookId, chapter.Id, chapter.Title, ct);
+        }
+
+        return await GetByIdAsync(id, null, includeUnpublished: true, ct);
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var chapter = await _db.Chapters.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (chapter is null) return false;
+        _db.Chapters.Remove(chapter);
+        await _db.SaveChangesAsync(ct);
+        return true;
     }
 
     public async Task LikeChapterAsync(Guid chapterId, Guid userId, CancellationToken ct = default)

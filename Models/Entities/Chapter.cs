@@ -19,6 +19,9 @@ public class Chapter
     /// <summary>Порядковый номер главы внутри книги.</summary>
     public int ChapterNumber { get; set; }
 
+    /// <summary>Опубликована ли глава. Черновики видны только команде/админу.</summary>
+    public bool IsPublished { get; set; } = true;
+
     public DateTime CreatedAt { get; set; }
 
     // ── Navigation ──────────────────────────────────────

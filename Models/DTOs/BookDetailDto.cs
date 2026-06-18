@@ -10,6 +10,7 @@ public record BookDetailDto(
     string Title,
     string? Description,
     string? CoverUrl,
+    string? CoverThumbUrl,
     BookType Type,
     OriginalStatus OriginalStatus,
     TranslationStatus TranslationStatus,
@@ -18,5 +19,7 @@ public record BookDetailDto(
     int ChapterCount,
     ReadingProgressDto? UserProgress,
     List<TagDto> Tags,
-    List<CategoryDto> Categories
+    List<CategoryDto> Categories,
+    double? AverageRating = null,
+    int RatingCount = 0
 );

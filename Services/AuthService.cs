@@ -15,6 +15,12 @@ namespace LibNode.Api.Services;
 /// </summary>
 public class AuthService : IAuthService
 {
+    /// <summary>Claim type, несущий <see cref="User.SecurityStamp"/> в JWT.</summary>
+    public const string SecurityStampClaimType = "sstamp";
+
+    // Фиксированный BCrypt-хэш для подавления timing-oracle при несуществующем пользователе.
+    private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("password-not-set");
+
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
 
@@ -56,11 +62,66 @@ public class AuthService : IAuthService
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email, ct);
 
-        if (user is null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+        // Сверяем хэш даже для несуществующего пользователя (фиксированная заглушка),
+        // чтобы обе ветки занимали сопоставимое время и не утекал timing-oracle.
+        var passwordValid = BCrypt.Net.BCrypt.Verify(dto.Password, user?.PasswordHash ?? DummyPasswordHash);
+
+        if (user is null || !passwordValid)
             throw new UnauthorizedAccessException("Неверный email или пароль.");
+
+        if (user.IsBanned)
+            throw new UnauthorizedAccessException("Аккаунт заблокирован.");
 
         var token = GenerateJwtToken(user);
         return new AuthResponseDto(token, MapToDto(user));
+    }
+
+    /// <inheritdoc />
+    public async Task<UserProfileDto?> GetProfileAsync(Guid userId, CancellationToken ct = default)
+    {
+        return await _db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new UserProfileDto(u.Id, u.Username, u.Email, u.Role, u.AvatarUrl, u.AvatarThumbUrl, u.Bio, u.CreatedAt))
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<AuthResponseDto> UpdateProfileAsync(Guid userId, UpdateProfileDto dto, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new KeyNotFoundException("Пользователь не найден.");
+
+        user.Username = dto.Username.Trim();
+        user.Email = dto.Email.Trim();
+        user.AvatarUrl = string.IsNullOrWhiteSpace(dto.AvatarUrl) ? null : dto.AvatarUrl.Trim();
+        user.Bio = string.IsNullOrWhiteSpace(dto.Bio) ? null : dto.Bio.Trim();
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            throw new InvalidOperationException("Пользователь с таким email или именем уже существует.", ex);
+        }
+
+        var token = GenerateJwtToken(user);
+        return new AuthResponseDto(token, MapToDto(user));
+    }
+
+    /// <inheritdoc />
+    public async Task ChangePasswordAsync(Guid userId, ChangePasswordDto dto, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new KeyNotFoundException("Пользователь не найден.");
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+            throw new UnauthorizedAccessException("Текущий пароль неверен.");
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        // Инвалидируем все ранее выданные токены пользователя.
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await _db.SaveChangesAsync(ct);
     }
 
     // ── Private helpers ─────────────────────────────────────────────────────
@@ -80,6 +141,7 @@ public class AuthService : IAuthService
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
             new Claim(ClaimTypes.Role, user.Role),
             new Claim(ClaimTypes.Name, user.Username),
+            new Claim(SecurityStampClaimType, user.SecurityStamp),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 

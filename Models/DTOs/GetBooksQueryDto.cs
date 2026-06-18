@@ -20,4 +20,6 @@ public record GetBooksQueryDto
     public List<TranslationStatus>? TranslationStatuses { get; init; }
     public List<string>? Tags { get; init; }
     public List<string>? Categories { get; init; }
+    /// <summary>Фильтр по команде переводчиков (основная команда тайтла).</summary>
+    public Guid? TeamId { get; init; }
 }

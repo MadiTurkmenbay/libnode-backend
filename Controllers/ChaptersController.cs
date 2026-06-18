@@ -15,10 +15,18 @@ namespace LibNode.Api.Controllers;
 public class ChaptersController : ControllerBase
 {
     private readonly IChapterService _chapterService;
+    private readonly ITeamService _teams;
 
-    public ChaptersController(IChapterService chapterService)
+    public ChaptersController(IChapterService chapterService, ITeamService teams)
     {
         _chapterService = chapterService;
+        _teams = teams;
+    }
+
+    private Guid? CurrentUserId()
+    {
+        var raw = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(raw, out var id) ? id : null;
     }
 
     /// <summary>
@@ -50,7 +58,10 @@ public class ChaptersController : ControllerBase
             }
         }
 
-        var result = await _chapterService.GetByBookIdAsync(bookId, cursor, limit, sortDesc, userId, ct);
+        var includeUnpublished = userId.HasValue
+            && await _teams.CanEditBookChaptersAsync(userId.Value, bookId, User.IsInRole("Admin"), ct);
+
+        var result = await _chapterService.GetByBookIdAsync(bookId, cursor, limit, sortDesc, userId, includeUnpublished, ct);
         return Ok(result);
     }
 
@@ -72,7 +83,15 @@ public class ChaptersController : ControllerBase
             }
         }
 
-        var chapter = await _chapterService.GetByIdAsync(id, userId, ct);
+        var includeUnpublished = false;
+        if (userId.HasValue)
+        {
+            var bookId = await _chapterService.GetBookIdAsync(id, ct);
+            includeUnpublished = bookId.HasValue
+                && await _teams.CanEditBookChaptersAsync(userId.Value, bookId.Value, User.IsInRole("Admin"), ct);
+        }
+
+        var chapter = await _chapterService.GetByIdAsync(id, userId, includeUnpublished, ct);
 
         if (chapter is null)
             return NotFound();
@@ -84,11 +103,16 @@ public class ChaptersController : ControllerBase
     /// Создать новую главу.
     /// </summary>
     [HttpPost("api/chapters")]
-    [Authorize(Roles = "Admin")]
+    [Authorize]
     [ProducesResponseType(typeof(ChapterDetailDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateChapterDto dto, CancellationToken ct)
     {
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (!await _teams.CanEditBookChaptersAsync(userId.Value, dto.BookId, User.IsInRole("Admin"), ct))
+            return Forbid();
+
         try
         {
             var created = await _chapterService.CreateAsync(dto, ct);
@@ -98,6 +122,46 @@ public class ChaptersController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>Редактировать главу (администратор или участник команды тайтла).</summary>
+    [HttpPut("api/chapters/{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateChapterDto dto, CancellationToken ct)
+    {
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var bookId = await _chapterService.GetBookIdAsync(id, ct);
+        if (bookId == null) return NotFound();
+        if (!await _teams.CanEditBookChaptersAsync(userId.Value, bookId.Value, User.IsInRole("Admin"), ct))
+            return Forbid();
+
+        try
+        {
+            var updated = await _chapterService.UpdateAsync(id, dto, ct);
+            return updated == null ? NotFound() : Ok(updated);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Удалить главу (администратор или участник команды тайтла).</summary>
+    [HttpDelete("api/chapters/{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var bookId = await _chapterService.GetBookIdAsync(id, ct);
+        if (bookId == null) return NotFound();
+        if (!await _teams.CanEditBookChaptersAsync(userId.Value, bookId.Value, User.IsInRole("Admin"), ct))
+            return Forbid();
+
+        return await _chapterService.DeleteAsync(id, ct) ? NoContent() : NotFound();
     }
 
     /// <summary>

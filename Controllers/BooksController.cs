@@ -17,11 +17,13 @@ public class BooksController : ControllerBase
 {
     private readonly IBookService _bookService;
     private readonly IReadingProgressService _readingProgressService;
+    private readonly ITeamService _teams;
 
-    public BooksController(IBookService bookService, IReadingProgressService readingProgressService)
+    public BooksController(IBookService bookService, IReadingProgressService readingProgressService, ITeamService teams)
     {
         _bookService = bookService;
         _readingProgressService = readingProgressService;
+        _teams = teams;
     }
 
     private Guid? TryGetCurrentUserId()
@@ -101,6 +103,25 @@ public class BooksController : ControllerBase
     }
 
     /// <summary>
+    /// Редактировать метаданные тайтла (администратор или глава команды тайтла).
+    /// </summary>
+    [HttpPut("{id:guid}")]
+    [Authorize]
+    [ProducesResponseType(typeof(BookDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateBookDto dto, CancellationToken ct)
+    {
+        var userId = TryGetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (!await _teams.CanManageBookTitleAsync(userId.Value, id, User.IsInRole("Admin"), ct))
+            return Forbid();
+
+        var updated = await _bookService.UpdateAsync(id, dto, ct);
+        return updated == null ? NotFound() : Ok(updated);
+    }
+
+    /// <summary>
     /// Сохранить последнюю открытую главу пользователя по книге.
     /// </summary>
     [HttpPost("{id:guid}/progress")]
@@ -125,5 +146,53 @@ public class BooksController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Идентификаторы прочитанных текущим пользователем глав книги (для индикатора «прочитано»).
+    /// </summary>
+    [HttpGet("{id:guid}/read-chapters")]
+    [Authorize]
+    [ProducesResponseType(typeof(IEnumerable<Guid>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IEnumerable<Guid>>> GetReadChapters(Guid id, CancellationToken ct)
+    {
+        var userId = TryGetCurrentUserId();
+        if (!userId.HasValue)
+        {
+            return Unauthorized();
+        }
+
+        var ids = await _readingProgressService.GetReadChapterIdsAsync(userId.Value, id, ct);
+        return Ok(ids);
+    }
+
+    /// <summary>
+    /// Отметить прочитанными все опубликованные главы книги до указанного номера включительно.
+    /// </summary>
+    [HttpPost("{id:guid}/mark-read-through")]
+    [Authorize]
+    public async Task<IActionResult> MarkReadThrough(Guid id, [FromBody] MarkReadThroughDto dto, CancellationToken ct)
+    {
+        var userId = TryGetCurrentUserId();
+        if (!userId.HasValue) return Unauthorized();
+
+        var added = await _readingProgressService.MarkReadThroughAsync(userId.Value, id, dto.ChapterNumber, ct);
+        return Ok(new { added });
+    }
+
+    /// <summary>
+    /// Блок «Продолжить чтение»: книги пользователя с последней позицией.
+    /// </summary>
+    [HttpGet("/api/me/continue-reading")]
+    [Authorize]
+    [ProducesResponseType(typeof(IEnumerable<ContinueReadingDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<ContinueReadingDto>>> ContinueReading([FromQuery] int limit, CancellationToken ct)
+    {
+        var userId = TryGetCurrentUserId();
+        if (!userId.HasValue) return Unauthorized();
+
+        var items = await _readingProgressService.GetContinueReadingAsync(userId.Value, limit, ct);
+        return Ok(items);
     }
 }

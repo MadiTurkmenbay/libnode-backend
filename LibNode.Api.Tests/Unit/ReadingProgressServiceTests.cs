@@ -55,7 +55,10 @@ public class ReadingProgressServiceTests
     {
         using var context = CreateContext();
         var (user, book, chapter1, chapter2) = await SeedUserBookAndChaptersAsync(context);
-        var service = new ReadingProgressService(context);
+        var notifications = new NotificationService(context);
+        var gamification = new GamificationService(
+            context, notifications, new AchievementService(context, notifications), new QuestService(context, notifications));
+        var service = new ReadingProgressService(context, gamification);
 
         var exception = await Record.ExceptionAsync(async () =>
         {

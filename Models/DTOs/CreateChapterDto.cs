@@ -15,5 +15,7 @@ public record CreateChapterDto(
     string Content,
     
     [Range(1, int.MaxValue)]
-    int ChapterNumber
+    int ChapterNumber,
+
+    bool IsPublished = true
 );

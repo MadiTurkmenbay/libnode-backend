@@ -72,6 +72,7 @@ public class CollectionService : ICollectionService
                 cb.Book.Title,
                 cb.Book.Description,
                 cb.Book.CoverUrl,
+                cb.Book.CoverThumbUrl,
                 cb.Book.Type,
                 cb.Book.OriginalStatus,
                 cb.Book.TranslationStatus,

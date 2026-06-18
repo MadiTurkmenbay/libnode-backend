@@ -44,7 +44,7 @@ public class ChapterServiceTests
         context.Chapters.Add(chapter);
         await context.SaveChangesAsync();
 
-        var service = new ChapterService(context);
+        var service = new ChapterService(context, new NotificationService(context));
         var result = await service.GetByIdAsync(chapter.Id);
 
         Assert.NotNull(result);
@@ -68,7 +68,7 @@ public class ChapterServiceTests
         context.Chapters.AddRange(chapters);
         await context.SaveChangesAsync();
 
-        var service = new ChapterService(context);
+        var service = new ChapterService(context, new NotificationService(context));
         var result = await service.GetByIdAsync(chapters[2].Id);
 
         Assert.NotNull(result);
@@ -90,7 +90,7 @@ public class ChapterServiceTests
         context.Chapters.AddRange(chapters);
         await context.SaveChangesAsync();
 
-        var service = new ChapterService(context);
+        var service = new ChapterService(context, new NotificationService(context));
         var result = await service.GetByIdAsync(chapters[1].Id);
 
         Assert.NotNull(result);
@@ -111,7 +111,7 @@ public class ChapterServiceTests
         context.Chapters.AddRange(chapterA1, chapterA2, chapterB1);
         await context.SaveChangesAsync();
 
-        var service = new ChapterService(context);
+        var service = new ChapterService(context, new NotificationService(context));
         var result = await service.GetByIdAsync(chapterA2.Id);
 
         Assert.NotNull(result);

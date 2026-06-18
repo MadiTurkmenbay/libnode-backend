@@ -85,22 +85,25 @@ public class BookService : IBookService
             .Include(b => b.Categories)
             .Where(b => b.Id == id);
 
+        BookDetailDto? result;
+
         if (userId.HasValue)
         {
             var currentUserId = userId.Value;
 
-            return await query
+            result = await query
                 .Select(b => new BookDetailDto(
                     b.Id,
                     b.Title,
                     b.Description,
                     b.CoverUrl,
+                    b.CoverThumbUrl,
                     b.Type,
                     b.OriginalStatus,
                     b.TranslationStatus,
                     b.CreatedAt,
                     b.UpdatedAt,
-                    b.Chapters.Count,
+                    b.Chapters.Count(c => c.IsPublished),
                     b.ReadingProgresses
                         .Where(rp => rp.UserId == currentUserId)
                         .Select(rp => new ReadingProgressDto(
@@ -113,24 +116,38 @@ public class BookService : IBookService
                 ))
                 .FirstOrDefaultAsync(ct);
         }
+        else
+        {
+            result = await query
+                .Select(b => new BookDetailDto(
+                    b.Id,
+                    b.Title,
+                    b.Description,
+                    b.CoverUrl,
+                    b.CoverThumbUrl,
+                    b.Type,
+                    b.OriginalStatus,
+                    b.TranslationStatus,
+                    b.CreatedAt,
+                    b.UpdatedAt,
+                    b.Chapters.Count(c => c.IsPublished),
+                    null,
+                    b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
+                ))
+                .FirstOrDefaultAsync(ct);
+        }
 
-        return await query
-            .Select(b => new BookDetailDto(
-                b.Id,
-                b.Title,
-                b.Description,
-                b.CoverUrl,
-                b.Type,
-                b.OriginalStatus,
-                b.TranslationStatus,
-                b.CreatedAt,
-                b.UpdatedAt,
-                b.Chapters.Count,
-                null,
-                b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
-                b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
-            ))
-            .FirstOrDefaultAsync(ct);
+        if (result is not null)
+        {
+            // Атомарный инкремент просмотров тайтла. Не аудируется (UpdatedAt не трогаем,
+            // чтобы просмотр не влиял на сортировку каталога) и пока не отдаётся в DTO.
+            await _db.Books
+                .Where(b => b.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(b => b.ViewCount, b => b.ViewCount + 1), ct);
+        }
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -178,6 +195,7 @@ public class BookService : IBookService
             book.Title,
             book.Description,
             book.CoverUrl,
+            book.CoverThumbUrl,
             book.Type,
             book.OriginalStatus,
             book.TranslationStatus,
@@ -187,6 +205,39 @@ public class BookService : IBookService
             null,
             book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
             book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
+        );
+    }
+
+    public async Task<BookDto?> UpdateAsync(Guid id, UpdateBookDto dto, CancellationToken ct = default)
+    {
+        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (book is null) return null;
+
+        book.Title = dto.Title;
+        book.Description = dto.Description;
+        book.CoverUrl = dto.CoverUrl;
+        book.Type = dto.Type;
+        book.OriginalStatus = dto.OriginalStatus;
+        book.TranslationStatus = dto.TranslationStatus;
+
+        await _db.SaveChangesAsync(ct);
+
+        var chapterCount = await _db.Chapters.CountAsync(c => c.BookId == id && c.IsPublished, ct);
+        return new BookDto(
+            book.Id,
+            book.Title,
+            book.Description,
+            book.CoverUrl,
+            book.CoverThumbUrl,
+            book.Type,
+            book.OriginalStatus,
+            book.TranslationStatus,
+            book.CreatedAt,
+            book.UpdatedAt,
+            chapterCount,
+            null,
+            new List<TagDto>(),
+            new List<CategoryDto>()
         );
     }
 
@@ -236,6 +287,11 @@ public class BookService : IBookService
         if (categorySlugs.Length > 0)
         {
             booksQuery = booksQuery.Where(b => b.Categories.Any(c => categorySlugs.Contains(c.Slug)));
+        }
+
+        if (query.TeamId.HasValue)
+        {
+            booksQuery = booksQuery.Where(b => b.TeamId == query.TeamId.Value);
         }
 
         return booksQuery;
@@ -344,12 +400,13 @@ public class BookService : IBookService
                     b.Title,
                     b.Description,
                     b.CoverUrl,
+                    b.CoverThumbUrl,
                     b.Type,
                     b.OriginalStatus,
                     b.TranslationStatus,
                     b.CreatedAt,
                     b.UpdatedAt,
-                    b.Chapters.Count,
+                    b.Chapters.Count(c => c.IsPublished),
                     b.ReadingProgresses
                         .Where(rp => rp.UserId == currentUserId)
                         .Select(rp => new ReadingProgressDto(
@@ -358,7 +415,9 @@ public class BookService : IBookService
                         ))
                         .FirstOrDefault(),
                     b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
-                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+                    b.Ratings.Any() ? (double?)b.Ratings.Average(r => (double)r.Value) : null,
+                    b.Ratings.Count
                 ))
                 .ToListAsync(ct);
         }
@@ -369,15 +428,18 @@ public class BookService : IBookService
                 b.Title,
                 b.Description,
                 b.CoverUrl,
+                b.CoverThumbUrl,
                 b.Type,
                 b.OriginalStatus,
                 b.TranslationStatus,
                 b.CreatedAt,
                 b.UpdatedAt,
-                b.Chapters.Count,
+                b.Chapters.Count(c => c.IsPublished),
                 null,
                 b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
-                b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
+                b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+                b.Ratings.Any() ? (double?)b.Ratings.Average(r => (double)r.Value) : null,
+                b.Ratings.Count
             ))
             .ToListAsync(ct);
     }

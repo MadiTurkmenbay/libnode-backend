@@ -12,5 +12,12 @@ public record ReaderChapterPayloadDto(
     string Title,
 
     [Required, MinLength(1)]
-    string Body
+    string Body,
+
+    Guid? TeamId = null,
+
+    [StringLength(10)]
+    string? Language = null,
+
+    Guid? CreatedByUserId = null
 );

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using LibNode.Api.Authentication;
@@ -59,6 +60,23 @@ builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IReaderIngestService, ReaderIngestService>();
 builder.Services.AddScoped<IQuoteService, QuoteService>();
+builder.Services.AddScoped<ICommentService, CommentService>();
+builder.Services.AddScoped<ITeamService, TeamService>();
+builder.Services.AddScoped<IUserAdminService, UserAdminService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IChapterVersionService, ChapterVersionService>();
+builder.Services.AddScoped<IAchievementService, AchievementService>();
+builder.Services.AddScoped<IQuestService, QuestService>();
+builder.Services.AddSingleton<IStorageService, StorageService>();
+builder.Services.AddSingleton<IImageService, ImageService>();
+builder.Services.AddSingleton<IEmailSender, NoopEmailSender>();
+builder.Services.AddScoped<ILeaderboardService, LeaderboardService>();
+builder.Services.AddScoped<IFollowService, FollowService>();
+builder.Services.AddScoped<IRatingService, RatingService>();
+builder.Services.AddScoped<IShelfService, ShelfService>();
+builder.Services.AddScoped<IRecommendationService, RecommendationService>();
+builder.Services.AddScoped<IRankingService, RankingService>();
+builder.Services.AddScoped<IGamificationService, GamificationService>();
 
 // ── JWT Authentication ──────────────────────────────────────────────────────
 
@@ -72,6 +90,13 @@ if (string.IsNullOrWhiteSpace(jwtKey))
 }
 
 var key = Encoding.UTF8.GetBytes(jwtKey);
+
+if (key.Length < 32)
+{
+    throw new InvalidOperationException(
+        "JWT signing key is too weak: it must be at least 32 bytes (256 bits) for HMAC-SHA256. " +
+        "Set a stronger JwtSettings__Key.");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -92,6 +117,49 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(key),
         ClockSkew = TimeSpan.Zero // Без допуска по времени
+    };
+    // Revocation: проверяем актуальность пользователя на каждом валидном токене.
+    // Закрывает окна для забаненных и разжалованных пользователей, а также
+    // инвалидирует токены после смены пароля (через SecurityStamp).
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async ctx =>
+        {
+            var principal = ctx.Principal;
+            var rawUserId = principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(rawUserId, out var userId))
+            {
+                ctx.Fail("Invalid token subject.");
+                return;
+            }
+
+            var db = ctx.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+            var user = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => new { u.IsBanned, u.Role, u.SecurityStamp })
+                .FirstOrDefaultAsync(ctx.HttpContext.RequestAborted);
+
+            if (user is null || user.IsBanned)
+            {
+                ctx.Fail("User is not allowed.");
+                return;
+            }
+
+            var tokenRole = principal?.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.Equals(tokenRole, user.Role, StringComparison.Ordinal))
+            {
+                ctx.Fail("Token role no longer matches user role.");
+                return;
+            }
+
+            var tokenStamp = principal?.FindFirst(AuthService.SecurityStampClaimType)?.Value;
+            if (!string.Equals(tokenStamp, user.SecurityStamp, StringComparison.Ordinal))
+            {
+                ctx.Fail("Security stamp mismatch.");
+                return;
+            }
+        }
     };
 })
     .AddScheme<TranslatorApiKeyAuthenticationOptions, TranslatorApiKeyAuthenticationHandler>(
@@ -118,21 +186,72 @@ if (builder.Configuration.GetValue<bool>("RateLimiting:Enabled"))
 {
     builder.Services.AddRateLimiter(options =>
     {
-        options.AddFixedWindowLimiter("auth", opt =>
+        // Auth: лимит ПО IP (форвард-заголовки уже настроены), а не единый глобальный bucket.
+        options.AddPolicy("auth", httpContext =>
         {
-            opt.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:Auth:PermitLimit");
-            opt.Window = TimeSpan.FromMinutes(
-                builder.Configuration.GetValue<int>("RateLimiting:Auth:WindowMinutes"));
-            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            opt.QueueLimit = 0;
+            var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:Auth:PermitLimit"),
+                Window = TimeSpan.FromMinutes(
+                    builder.Configuration.GetValue<int>("RateLimiting:Auth:WindowMinutes")),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            });
         });
-        options.AddFixedWindowLimiter("ingest", opt =>
+        // Ingest: лимит ПО IP, а не единый глобальный bucket.
+        options.AddPolicy("ingest", httpContext =>
         {
-            opt.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:Ingest:PermitLimit");
-            opt.Window = TimeSpan.FromMinutes(
-                builder.Configuration.GetValue<int>("RateLimiting:Ingest:WindowMinutes"));
-            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            opt.QueueLimit = 0;
+            var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:Ingest:PermitLimit"),
+                Window = TimeSpan.FromMinutes(
+                    builder.Configuration.GetValue<int>("RateLimiting:Ingest:WindowMinutes")),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            });
+        });
+        // Загрузка медиа: лимит ПО ПОЛЬЗОВАТЕЛЮ (партиционирование по NameIdentifier / IP).
+        options.AddPolicy("media", httpContext =>
+        {
+            var key = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "anonymous";
+            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int?>("RateLimiting:Media:PermitLimit") ?? 20,
+                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue<int?>("RateLimiting:Media:WindowMinutes") ?? 1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            });
+        });
+        options.AddPolicy("comments", httpContext =>
+        {
+            var key = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "anonymous";
+            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int?>("RateLimiting:Comments:PermitLimit") ?? 30,
+                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue<int?>("RateLimiting:Comments:WindowMinutes") ?? 1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            });
+        });
+        // Голосования/оценки/подписки: лимит ПО ПОЛЬЗОВАТЕЛЮ (партиционирование по NameIdentifier / IP).
+        options.AddPolicy("interactions", httpContext =>
+        {
+            var key = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "anonymous";
+            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int?>("RateLimiting:Interactions:PermitLimit") ?? 60,
+                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue<int?>("RateLimiting:Interactions:WindowMinutes") ?? 1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            });
         });
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     });

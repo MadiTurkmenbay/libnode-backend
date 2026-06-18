@@ -12,4 +12,13 @@ public interface IAuthService
 
     /// <summary>Аутентифицировать пользователя и вернуть JWT.</summary>
     Task<AuthResponseDto> LoginAsync(LoginDto dto, CancellationToken ct = default);
+
+    /// <summary>Полный профиль пользователя для личного кабинета. Null, если не найден.</summary>
+    Task<UserProfileDto?> GetProfileAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Обновить профиль (имя/email/аватар/био). Возвращает новый токен (claims могли измениться).</summary>
+    Task<AuthResponseDto> UpdateProfileAsync(Guid userId, UpdateProfileDto dto, CancellationToken ct = default);
+
+    /// <summary>Сменить пароль (проверяя текущий). Бросает UnauthorizedAccessException при неверном текущем пароле.</summary>
+    Task ChangePasswordAsync(Guid userId, ChangePasswordDto dto, CancellationToken ct = default);
 }
