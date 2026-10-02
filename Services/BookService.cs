@@ -125,7 +125,9 @@ public class BookService : IBookService
                         ))
                         .FirstOrDefault(),
                     b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
-                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+                    b.Ratings.Any() ? (double?)b.Ratings.Average(r => (double)r.Value) : null,
+                    b.Ratings.Count
                 ))
                 .FirstOrDefaultAsync(ct);
         }
@@ -146,7 +148,9 @@ public class BookService : IBookService
                     b.Chapters.Count(c => c.IsPublished),
                     null,
                     b.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
-                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList()
+                    b.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+                    b.Ratings.Any() ? (double?)b.Ratings.Average(r => (double)r.Value) : null,
+                    b.Ratings.Count
                 ))
                 .FirstOrDefaultAsync(ct);
         }
@@ -230,7 +234,10 @@ public class BookService : IBookService
 
     public async Task<BookDto?> UpdateAsync(Guid id, UpdateBookDto dto, CancellationToken ct = default)
     {
-        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id, ct);
+        var book = await _db.Books
+            .Include(b => b.Tags)
+            .Include(b => b.Categories)
+            .FirstOrDefaultAsync(b => b.Id == id, ct);
         if (book is null) return null;
 
         book.Title = dto.Title;
@@ -243,6 +250,12 @@ public class BookService : IBookService
         await _db.SaveChangesAsync(ct);
 
         var chapterCount = await _db.Chapters.CountAsync(c => c.BookId == id && c.IsPublished, ct);
+        var ratings = await _db.BookRatings
+            .AsNoTracking()
+            .Where(r => r.BookId == id)
+            .Select(r => r.Value)
+            .ToListAsync(ct);
+
         return ResolveCovers(new BookDto(
             book.Id,
             book.Title,
@@ -256,9 +269,29 @@ public class BookService : IBookService
             book.UpdatedAt,
             chapterCount,
             null,
-            new List<TagDto>(),
-            new List<CategoryDto>()
+            book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+            book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+            ratings.Count > 0 ? ratings.Average(v => (double)v) : null,
+            ratings.Count
         ));
+    }
+
+    /// <inheritdoc />
+    public async Task<(string? CoverKey, string? CoverThumbKey)?> UpdateCoverKeysAsync(
+        Guid id,
+        string coverKey,
+        string? coverThumbKey,
+        CancellationToken ct = default)
+    {
+        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (book is null) return null;
+
+        var oldKeys = (book.CoverUrl, book.CoverThumbUrl);
+        book.CoverUrl = coverKey;
+        book.CoverThumbUrl = coverThumbKey;
+        await _db.SaveChangesAsync(ct);
+
+        return oldKeys;
     }
 
     // ── Private helpers ──────────────────────────────────────

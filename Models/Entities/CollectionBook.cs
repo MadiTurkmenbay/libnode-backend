@@ -9,6 +9,6 @@ public class CollectionBook
     public Guid BookId { get; set; }
     public DateTime AddedAt { get; set; }
 
-    public UserCollection? Collection { get; set; }
-    public Book? Book { get; set; }
+    public UserCollection Collection { get; set; } = null!;
+    public Book Book { get; set; } = null!;
 }

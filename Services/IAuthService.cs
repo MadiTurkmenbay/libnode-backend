@@ -21,4 +21,11 @@ public interface IAuthService
 
     /// <summary>Сменить пароль (проверяя текущий). Бросает UnauthorizedAccessException при неверном текущем пароле.</summary>
     Task ChangePasswordAsync(Guid userId, ChangePasswordDto dto, CancellationToken ct = default);
+
+    /// <summary>Обновить ключи аватара и вернуть прежние ключи. Null, если пользователь не найден.</summary>
+    Task<(string? AvatarKey, string? AvatarThumbKey)?> UpdateAvatarKeysAsync(
+        Guid userId,
+        string avatarKey,
+        string? avatarThumbKey,
+        CancellationToken ct = default);
 }

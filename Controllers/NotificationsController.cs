@@ -1,12 +1,9 @@
 using System.Security.Claims;
-using LibNode.Api.Data;
 using LibNode.Api.Models.Common;
 using LibNode.Api.Models.DTOs;
-using LibNode.Api.Models.Entities;
 using LibNode.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace LibNode.Api.Controllers;
 
@@ -16,12 +13,10 @@ namespace LibNode.Api.Controllers;
 public class NotificationsController : ControllerBase
 {
     private readonly INotificationService _notifications;
-    private readonly AppDbContext _db;
 
-    public NotificationsController(INotificationService notifications, AppDbContext db)
+    public NotificationsController(INotificationService notifications)
     {
         _notifications = notifications;
-        _db = db;
     }
 
     private Guid GetUserId()
@@ -102,52 +97,10 @@ public class NotificationsController : ControllerBase
 
     [HttpGet("prefs")]
     public async Task<ActionResult<NotificationPrefsDto>> GetPrefs(CancellationToken ct)
-    {
-        var userId = GetUserId();
-        var prefs = await _db.UserNotificationPrefs
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
-
-        if (prefs is null)
-            return Ok(new NotificationPrefsDto(true, true, true, true, true, true, true, true));
-
-        return Ok(new NotificationPrefsDto(
-            prefs.EnableCommentReply, prefs.EnableTeamInvite,
-            prefs.EnableRequestApproved, prefs.EnableRequestRejected,
-            prefs.EnableNewChapter, prefs.EnableMention,
-            prefs.EnableLevelUp, prefs.EnableAchievement));
-    }
+        => Ok(await _notifications.GetPrefsAsync(GetUserId(), ct));
 
     [HttpPut("prefs")]
     public async Task<ActionResult<NotificationPrefsDto>> UpdatePrefs(
         [FromBody] UpdateNotificationPrefsDto dto, CancellationToken ct)
-    {
-        var userId = GetUserId();
-        var prefs = await _db.UserNotificationPrefs
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
-
-        if (prefs is null)
-        {
-            prefs = new UserNotificationPrefs { UserId = userId };
-            _db.UserNotificationPrefs.Add(prefs);
-        }
-
-        if (dto.EnableCommentReply.HasValue) prefs.EnableCommentReply = dto.EnableCommentReply.Value;
-        if (dto.EnableTeamInvite.HasValue) prefs.EnableTeamInvite = dto.EnableTeamInvite.Value;
-        if (dto.EnableRequestApproved.HasValue) prefs.EnableRequestApproved = dto.EnableRequestApproved.Value;
-        if (dto.EnableRequestRejected.HasValue) prefs.EnableRequestRejected = dto.EnableRequestRejected.Value;
-        if (dto.EnableNewChapter.HasValue) prefs.EnableNewChapter = dto.EnableNewChapter.Value;
-        if (dto.EnableMention.HasValue) prefs.EnableMention = dto.EnableMention.Value;
-        if (dto.EnableLevelUp.HasValue) prefs.EnableLevelUp = dto.EnableLevelUp.Value;
-        if (dto.EnableAchievement.HasValue) prefs.EnableAchievement = dto.EnableAchievement.Value;
-        prefs.UpdatedAt = DateTime.UtcNow;
-
-        await _db.SaveChangesAsync(ct);
-
-        return Ok(new NotificationPrefsDto(
-            prefs.EnableCommentReply, prefs.EnableTeamInvite,
-            prefs.EnableRequestApproved, prefs.EnableRequestRejected,
-            prefs.EnableNewChapter, prefs.EnableMention,
-            prefs.EnableLevelUp, prefs.EnableAchievement));
-    }
+        => Ok(await _notifications.UpdatePrefsAsync(GetUserId(), dto, ct));
 }

@@ -59,9 +59,27 @@ public class CollectionService : ICollectionService
         var collection = await _context.UserCollections
             .Include(c => c.CollectionBooks)
                 .ThenInclude(cb => cb.Book)
+                    .ThenInclude(b => b!.Tags)
+            .Include(c => c.CollectionBooks)
+                .ThenInclude(cb => cb.Book)
+                    .ThenInclude(b => b!.Categories)
             .FirstOrDefaultAsync(c => c.Id == collectionId && c.UserId == userId);
 
         if (collection == null) return null;
+
+        var bookIds = collection.CollectionBooks.Select(cb => cb.BookId).ToList();
+        var chapterCounts = await _context.Chapters
+            .AsNoTracking()
+            .Where(ch => bookIds.Contains(ch.BookId) && ch.IsPublished)
+            .GroupBy(ch => ch.BookId)
+            .Select(g => new { BookId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.BookId, x => x.Count);
+        var ratingStats = await _context.BookRatings
+            .AsNoTracking()
+            .Where(r => bookIds.Contains(r.BookId))
+            .GroupBy(r => r.BookId)
+            .Select(g => new { BookId = g.Key, Count = g.Count(), Average = g.Average(r => (double)r.Value) })
+            .ToDictionaryAsync(x => x.BookId, x => new { x.Count, x.Average });
 
         return new CollectionDetailDto
         {
@@ -80,10 +98,12 @@ public class CollectionService : ICollectionService
                 cb.Book.TranslationStatus,
                 cb.Book.CreatedAt,
                 cb.Book.UpdatedAt,
-                _context.Chapters.Count(ch => ch.BookId == cb.Book.Id),
+                chapterCounts.GetValueOrDefault(cb.Book.Id),
                 null,
-                new List<TagDto>(),
-                new List<CategoryDto>()
+                cb.Book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
+                cb.Book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+                ratingStats.TryGetValue(cb.Book.Id, out var stats) ? stats.Average : null,
+                stats?.Count ?? 0
             )).ToList()
         };
     }

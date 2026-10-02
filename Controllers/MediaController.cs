@@ -1,11 +1,9 @@
 using System.Security.Claims;
-using LibNode.Api.Data;
 using LibNode.Api.Exceptions;
 using LibNode.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 
 namespace LibNode.Api.Controllers;
@@ -26,15 +24,17 @@ public class MediaController : ControllerBase
 
     private readonly IStorageService _storage;
     private readonly IImageService _images;
-    private readonly AppDbContext _db;
+    private readonly IAuthService _auth;
+    private readonly IBookService _books;
     private readonly ITeamService _teams;
     private readonly ILogger<MediaController> _logger;
 
-    public MediaController(IStorageService storage, IImageService images, AppDbContext db, ITeamService teams, ILogger<MediaController> logger)
+    public MediaController(IStorageService storage, IImageService images, IAuthService auth, IBookService books, ITeamService teams, ILogger<MediaController> logger)
     {
         _storage = storage;
         _images = images;
-        _db = db;
+        _auth = auth;
+        _books = books;
         _teams = teams;
         _logger = logger;
     }
@@ -73,6 +73,12 @@ public class MediaController : ControllerBase
 
     /// <summary>Ключ → абсолютный URL для ответа клиенту; сохраняет null (а не "") для отсутствующего превью.</summary>
     private string? ResolveOrNull(string? key) => key == null ? null : _storage.ResolveUrl(key);
+
+    private async Task DeleteUploadedAsync((string key, string? thumbKey) uploaded, CancellationToken ct)
+    {
+        await _storage.DeleteAsync(uploaded.key, ct);
+        await _storage.DeleteAsync(uploaded.thumbKey, ct);
+    }
 
     private Guid GetUserId()
     {
@@ -142,17 +148,26 @@ public class MediaController : ControllerBase
         catch (InvalidImageContentException) { return BadRequest(new { error = "Файл повреждён или не является изображением." }); }
         catch (ImageTooLargeException ex) { return BadRequest(new { error = ex.Message }); }
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
-        if (user == null) return NotFound();
-        // В БД храним КЛЮЧИ объектов; абсолютный URL собирается на чтении.
-        var (oldKey, oldThumbKey) = (user.AvatarUrl, user.AvatarThumbUrl);
-        user.AvatarUrl = result.key;
-        user.AvatarThumbUrl = result.thumbKey;
-        await _db.SaveChangesAsync(ct);
+        (string? AvatarKey, string? AvatarThumbKey)? oldKeys;
+        try
+        {
+            oldKeys = await _auth.UpdateAvatarKeysAsync(userId, result.key, result.thumbKey, ct);
+        }
+        catch
+        {
+            await DeleteUploadedAsync(result, ct);
+            throw;
+        }
+
+        if (oldKeys is null)
+        {
+            await DeleteUploadedAsync(result, ct);
+            return NotFound();
+        }
 
         // Чистим прежние объекты (best-effort, no-op для внешних URL / легаси-абсолютных значений).
-        await _storage.DeleteAsync(oldKey, ct);
-        await _storage.DeleteAsync(oldThumbKey, ct);
+        await _storage.DeleteAsync(oldKeys.Value.AvatarKey, ct);
+        await _storage.DeleteAsync(oldKeys.Value.AvatarThumbKey, ct);
 
         // Ответ клиенту — абсолютные URL для немедленного отображения.
         return Ok(new { avatarUrl = _storage.ResolveUrl(result.key), avatarThumbUrl = ResolveOrNull(result.thumbKey) });
@@ -169,23 +184,31 @@ public class MediaController : ControllerBase
         if (!await _teams.CanManageBookTitleAsync(userId, bookId, User.IsInRole("Admin"), ct))
             return Forbid();
 
-        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
-        if (book == null) return NotFound();
-
         (string key, string? thumbKey) result;
         try { result = await UploadWithThumbAsync(file!, "covers", 1200, 300, ct); }
         catch (UnknownImageFormatException) { return BadRequest(new { error = "Файл не является корректным изображением." }); }
         catch (InvalidImageContentException) { return BadRequest(new { error = "Файл повреждён или не является изображением." }); }
         catch (ImageTooLargeException ex) { return BadRequest(new { error = ex.Message }); }
 
-        // В БД храним КЛЮЧИ объектов; абсолютный URL собирается на чтении.
-        var (oldKey, oldThumbKey) = (book.CoverUrl, book.CoverThumbUrl);
-        book.CoverUrl = result.key;
-        book.CoverThumbUrl = result.thumbKey;
-        await _db.SaveChangesAsync(ct);
+        (string? CoverKey, string? CoverThumbKey)? oldKeys;
+        try
+        {
+            oldKeys = await _books.UpdateCoverKeysAsync(bookId, result.key, result.thumbKey, ct);
+        }
+        catch
+        {
+            await DeleteUploadedAsync(result, ct);
+            throw;
+        }
 
-        await _storage.DeleteAsync(oldKey, ct);
-        await _storage.DeleteAsync(oldThumbKey, ct);
+        if (oldKeys is null)
+        {
+            await DeleteUploadedAsync(result, ct);
+            return NotFound();
+        }
+
+        await _storage.DeleteAsync(oldKeys.Value.CoverKey, ct);
+        await _storage.DeleteAsync(oldKeys.Value.CoverThumbKey, ct);
 
         // Ответ клиенту — абсолютные URL для немедленного отображения.
         return Ok(new { coverUrl = _storage.ResolveUrl(result.key), coverThumbUrl = ResolveOrNull(result.thumbKey) });

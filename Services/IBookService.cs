@@ -22,5 +22,11 @@ public interface IBookService
 
     /// <summary>Редактировать метаданные тайтла. Null, если не найден.</summary>
     Task<BookDto?> UpdateAsync(Guid id, UpdateBookDto dto, CancellationToken ct = default);
-}
 
+    /// <summary>Обновить ключи обложки и вернуть прежние ключи. Null, если книга не найдена.</summary>
+    Task<(string? CoverKey, string? CoverThumbKey)?> UpdateCoverKeysAsync(
+        Guid id,
+        string coverKey,
+        string? coverThumbKey,
+        CancellationToken ct = default);
+}

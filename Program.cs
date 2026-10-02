@@ -14,6 +14,7 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var forwardedHeadersEnabled = builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled");
 
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -77,6 +78,7 @@ builder.Services.AddScoped<IShelfService, ShelfService>();
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 builder.Services.AddScoped<IRankingService, RankingService>();
 builder.Services.AddScoped<IGamificationService, GamificationService>();
+builder.Services.AddScoped<IAdminMetricsService, AdminMetricsService>();
 
 // ── JWT Authentication ──────────────────────────────────────────────────────
 
@@ -170,7 +172,7 @@ builder.Services.AddAuthentication(options =>
     });
 
 // ── ForwardedHeaders (Docker/Nginx reverse proxy) ─────────────────────────
-if (builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
+if (forwardedHeadersEnabled)
 {
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
@@ -321,11 +323,14 @@ if (builder.Configuration.GetValue<bool>("Swagger:Enabled"))
     });
 }
 
+if (forwardedHeadersEnabled)
+{
+    app.UseForwardedHeaders();
+}
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
-app.UseForwardedHeaders();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors("FrontendOrigins");
 app.UseAuthentication(); // ← ПЕРЕД UseAuthorization

@@ -849,7 +849,11 @@ public class AppDbContext : DbContext
                 var updatedAtProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt");
                 if (updatedAtProp != null)
                 {
-                    updatedAtProp.CurrentValue = now;
+                    var currentUpdatedAt = updatedAtProp.CurrentValue as DateTime?;
+                    if (!currentUpdatedAt.HasValue || currentUpdatedAt.Value == default)
+                    {
+                        updatedAtProp.CurrentValue = now;
+                    }
                 }
             }
             else if (entry.State == EntityState.Modified)

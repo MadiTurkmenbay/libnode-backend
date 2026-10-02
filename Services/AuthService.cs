@@ -133,6 +133,24 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <inheritdoc />
+    public async Task<(string? AvatarKey, string? AvatarThumbKey)?> UpdateAvatarKeysAsync(
+        Guid userId,
+        string avatarKey,
+        string? avatarThumbKey,
+        CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return null;
+
+        var oldKeys = (user.AvatarUrl, user.AvatarThumbUrl);
+        user.AvatarUrl = avatarKey;
+        user.AvatarThumbUrl = avatarThumbKey;
+        await _db.SaveChangesAsync(ct);
+
+        return oldKeys;
+    }
+
     // ── Private helpers ─────────────────────────────────────────────────────
 
     /// <summary>

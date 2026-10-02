@@ -81,4 +81,36 @@ public class CollectionServiceTests
         Assert.Equal(collectionB.Id, link.CollectionId);
         Assert.False(context.CollectionBooks.Any(cb => cb.CollectionId == collectionA.Id && cb.BookId == book.Id));
     }
+
+    [Fact]
+    public async Task GetCollectionByIdAsync_ReturnsPublishedChapterCountAndRatingStats()
+    {
+        using var context = CreateContext();
+        var user = CreateUser("detail");
+        var raterA = CreateUser("rater-a");
+        var raterB = CreateUser("rater-b");
+        var book = CreateBook("detail");
+        var collection = new UserCollection { Id = Guid.NewGuid(), UserId = user.Id, Name = "Collection detail" };
+
+        context.Users.AddRange(user, raterA, raterB);
+        context.Books.Add(book);
+        context.UserCollections.Add(collection);
+        context.CollectionBooks.Add(new CollectionBook { CollectionId = collection.Id, BookId = book.Id });
+        context.Chapters.AddRange(
+            new Chapter { Id = Guid.NewGuid(), BookId = book.Id, Title = "Published", Content = "Content", ChapterNumber = 1, IsPublished = true },
+            new Chapter { Id = Guid.NewGuid(), BookId = book.Id, Title = "Draft", Content = "Content", ChapterNumber = 2, IsPublished = false });
+        context.BookRatings.AddRange(
+            new BookRating { BookId = book.Id, UserId = raterA.Id, Value = 5 },
+            new BookRating { BookId = book.Id, UserId = raterB.Id, Value = 3 });
+        await context.SaveChangesAsync();
+
+        var service = new CollectionService(context, new FakeStorageService());
+        var detail = await service.GetCollectionByIdAsync(collection.Id, user.Id);
+
+        Assert.NotNull(detail);
+        var dto = Assert.Single(detail.Books);
+        Assert.Equal(1, dto.ChapterCount);
+        Assert.Equal(4, dto.AverageRating);
+        Assert.Equal(2, dto.RatingCount);
+    }
 }

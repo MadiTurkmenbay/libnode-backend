@@ -95,7 +95,7 @@ public class BookServiceTests
         context.Books.AddRange(books);
         await context.SaveChangesAsync();
 
-        // UpdatedAt перезаписывается при добавлении, поэтому явно обновляем после сохранения.
+        // Явно расставляем UpdatedAt после сохранения, чтобы порядок теста был очевидным.
         books[0].UpdatedAt = now.AddHours(-1);
         books[1].UpdatedAt = now.AddHours(-2);
         await context.SaveChangesAsync();
@@ -210,5 +210,72 @@ public class BookServiceTests
         Assert.Single(result.Items);
         Assert.True(result.HasMore);
         Assert.Equal(books[2].Id, result.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task UpdateCoverKeysAsync_ReplacesKeysAndReturnsPreviousKeys()
+    {
+        await using var context = CreateInMemoryContext();
+        var book = CreateBook("Cover", DateTime.UtcNow, DateTime.UtcNow);
+        book.CoverUrl = "covers/old.webp";
+        book.CoverThumbUrl = "covers/thumbs/old.webp";
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+
+        var service = new BookService(context, new FakeStorageService());
+        var oldKeys = await service.UpdateCoverKeysAsync(book.Id, "covers/new.webp", "covers/thumbs/new.webp");
+
+        Assert.NotNull(oldKeys);
+        Assert.Equal("covers/old.webp", oldKeys.Value.CoverKey);
+        Assert.Equal("covers/thumbs/old.webp", oldKeys.Value.CoverThumbKey);
+        Assert.Equal("covers/new.webp", book.CoverUrl);
+        Assert.Equal("covers/thumbs/new.webp", book.CoverThumbUrl);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_ReturnsRatingStats()
+    {
+        await using var context = CreateInMemoryContext();
+        var book = CreateBook("Rated", DateTime.UtcNow, DateTime.UtcNow);
+        var userA = new User { Id = Guid.NewGuid(), Username = "rater-a", Email = "rater-a@test.local", PasswordHash = "hash" };
+        var userB = new User { Id = Guid.NewGuid(), Username = "rater-b", Email = "rater-b@test.local", PasswordHash = "hash" };
+        context.Books.Add(book);
+        context.Users.AddRange(userA, userB);
+        context.BookRatings.AddRange(
+            new BookRating { BookId = book.Id, UserId = userA.Id, Value = 4 },
+            new BookRating { BookId = book.Id, UserId = userB.Id, Value = 2 });
+        await context.SaveChangesAsync();
+
+        var service = new BookService(context, new FakeStorageService());
+        var result = await service.GetAllAsync(new GetBooksQueryDto { Limit = 10 });
+
+        var dto = Assert.Single(result.Items);
+        Assert.Equal(3, dto.AverageRating);
+        Assert.Equal(2, dto.RatingCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsRatingStats()
+    {
+        await using var context = CreateInMemoryContext();
+        var book = CreateBook("Before", DateTime.UtcNow, DateTime.UtcNow);
+        var user = new User { Id = Guid.NewGuid(), Username = "rater", Email = "rater@test.local", PasswordHash = "hash" };
+        context.Books.Add(book);
+        context.Users.Add(user);
+        context.BookRatings.Add(new BookRating { BookId = book.Id, UserId = user.Id, Value = 5 });
+        await context.SaveChangesAsync();
+
+        var service = new BookService(context, new FakeStorageService());
+        var result = await service.UpdateAsync(book.Id, new UpdateBookDto(
+            "After",
+            "Description",
+            null,
+            BookType.Korea,
+            OriginalStatus.Ongoing,
+            TranslationStatus.Ongoing));
+
+        Assert.NotNull(result);
+        Assert.Equal(5, result.AverageRating);
+        Assert.Equal(1, result.RatingCount);
     }
 }

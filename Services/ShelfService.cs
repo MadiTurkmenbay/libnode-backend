@@ -77,7 +77,9 @@ public class ShelfService : IShelfService
                     s.Book.Chapters.Count(c => c.IsPublished),
                     null,
                     s.Book.Tags.Select(t => new TagDto(t.Id, t.Name, t.Slug)).ToList(),
-                    s.Book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList())))
+                    s.Book.Categories.Select(c => new CategoryDto(c.Id, c.Name, c.Slug)).ToList(),
+                    s.Book.Ratings.Any() ? (double?)s.Book.Ratings.Average(r => (double)r.Value) : null,
+                    s.Book.Ratings.Count)))
             .ToListAsync(ct);
 
         // Ключи обложек → абсолютные URL (в памяти, EF-безопасно).

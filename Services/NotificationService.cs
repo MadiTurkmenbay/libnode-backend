@@ -120,4 +120,52 @@ public class NotificationService : INotificationService
             .Where(n => n.UserId == userId && !n.IsRead)
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true), ct);
     }
+
+    public async Task<NotificationPrefsDto> GetPrefsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var prefs = await _db.UserNotificationPrefs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+
+        return MapPrefs(prefs);
+    }
+
+    public async Task<NotificationPrefsDto> UpdatePrefsAsync(Guid userId, UpdateNotificationPrefsDto dto, CancellationToken ct = default)
+    {
+        var prefs = await _db.UserNotificationPrefs
+            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+
+        if (prefs is null)
+        {
+            prefs = new UserNotificationPrefs { UserId = userId };
+            _db.UserNotificationPrefs.Add(prefs);
+        }
+
+        if (dto.EnableCommentReply.HasValue) prefs.EnableCommentReply = dto.EnableCommentReply.Value;
+        if (dto.EnableTeamInvite.HasValue) prefs.EnableTeamInvite = dto.EnableTeamInvite.Value;
+        if (dto.EnableRequestApproved.HasValue) prefs.EnableRequestApproved = dto.EnableRequestApproved.Value;
+        if (dto.EnableRequestRejected.HasValue) prefs.EnableRequestRejected = dto.EnableRequestRejected.Value;
+        if (dto.EnableNewChapter.HasValue) prefs.EnableNewChapter = dto.EnableNewChapter.Value;
+        if (dto.EnableMention.HasValue) prefs.EnableMention = dto.EnableMention.Value;
+        if (dto.EnableLevelUp.HasValue) prefs.EnableLevelUp = dto.EnableLevelUp.Value;
+        if (dto.EnableAchievement.HasValue) prefs.EnableAchievement = dto.EnableAchievement.Value;
+        prefs.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+
+        return MapPrefs(prefs);
+    }
+
+    private static NotificationPrefsDto MapPrefs(UserNotificationPrefs? prefs) =>
+        prefs is null
+            ? new NotificationPrefsDto(true, true, true, true, true, true, true, true)
+            : new NotificationPrefsDto(
+                prefs.EnableCommentReply,
+                prefs.EnableTeamInvite,
+                prefs.EnableRequestApproved,
+                prefs.EnableRequestRejected,
+                prefs.EnableNewChapter,
+                prefs.EnableMention,
+                prefs.EnableLevelUp,
+                prefs.EnableAchievement);
 }
