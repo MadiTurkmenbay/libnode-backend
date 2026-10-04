@@ -48,6 +48,35 @@ public class CollectionsController : ControllerBase
         return Ok(collection);
     }
 
+    [HttpPut("{id}")]
+    public async Task<ActionResult<CollectionDto>> RenameCollection(Guid id, [FromBody] CreateCollectionDto dto, CancellationToken ct)
+    {
+        try
+        {
+            var collection = await _collectionService.RenameCollectionAsync(id, GetUserId(), dto, ct);
+            if (collection == null) return NotFound();
+            return Ok(collection);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteCollection(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            if (!await _collectionService.DeleteCollectionAsync(id, GetUserId(), ct)) return NotFound();
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
     [HttpGet("containing-book/{bookId}")]
     public async Task<ActionResult<IEnumerable<Guid>>> GetCollectionIdsForBook(Guid bookId)
     {

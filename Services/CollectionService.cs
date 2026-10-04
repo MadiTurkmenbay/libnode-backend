@@ -37,6 +37,38 @@ public class CollectionService : ICollectionService
         };
     }
 
+    public async Task<CollectionDto?> RenameCollectionAsync(Guid collectionId, Guid userId, CreateCollectionDto dto, CancellationToken ct = default)
+    {
+        var collection = await _context.UserCollections.FirstOrDefaultAsync(c => c.Id == collectionId, ct);
+        if (collection == null) return null;
+        if (collection.UserId != userId)
+            throw new UnauthorizedAccessException("Collection access denied.");
+
+        collection.Name = dto.Name.Trim();
+        await _context.SaveChangesAsync(ct);
+        var bookCount = await _context.CollectionBooks.CountAsync(cb => cb.CollectionId == collectionId, ct);
+        return new CollectionDto
+        {
+            Id = collection.Id,
+            Name = collection.Name,
+            CreatedAt = collection.CreatedAt,
+            BookCount = bookCount
+        };
+    }
+
+    public async Task<bool> DeleteCollectionAsync(Guid collectionId, Guid userId, CancellationToken ct = default)
+    {
+        var collection = await _context.UserCollections.FirstOrDefaultAsync(c => c.Id == collectionId, ct);
+        if (collection == null) return false;
+        if (collection.UserId != userId)
+            throw new UnauthorizedAccessException("Collection access denied.");
+
+        // Existing EF/DB cascade removes this collection's links, not the books.
+        _context.UserCollections.Remove(collection);
+        await _context.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<IEnumerable<CollectionDto>> GetUserCollectionsAsync(Guid userId)
     {
         var collections = await _context.UserCollections

@@ -68,6 +68,8 @@ Backend LibNode написан на `.NET 10`, использует `ASP.NET Cor
 - [CRITICAL] Все multi-step операции, которые меняют несколько строк и обязаны быть атомарными, оборачиваются в явную транзакцию через `BeginTransactionAsync(...)` + `CommitAsync(...)`.
 - [MANDATORY] Инвариант “одна книга находится только в одной коллекции пользователя” обеспечивается на backend. Frontend не является защитным слоем.
 - [MANDATORY] Проверка владения коллекцией выполняется до мутаций; попытка работать с чужой коллекцией — это `UnauthorizedAccessException`/`Forbid`, а не “молчаливый успех”.
+- [MANDATORY] Collection rename/delete use `PUT /api/collections/{id}` (existing `CreateCollectionDto` name body -> `CollectionDto`, 200) and `DELETE /api/collections/{id}` (204). Missing returns 404; foreign owner returns 403 before mutation. Name validation remains DataAnnotations (400), persisted rename is trimmed. Existing EF cascade deletes only the collection's links, never books or another user's memberships; no new schema/DTO/auth flow.
+- [MANDATORY] Focused collection unit checks and real PostgreSQL/browser acceptance use `make test-reader-e2e READER_E2E_MODE=backend-unit` and `make test-reader-e2e` in the deployer. They use disposable infrastructure, not the broad/live stack. Applying runtime changes to live services needs coordinated `make restart` separately.
 
 ## Enum-поля и многие-ко-многим
 

@@ -1,4 +1,5 @@
 using LibNode.Api.Data;
+using LibNode.Api.Models.DTOs;
 using LibNode.Api.Models.Entities;
 using LibNode.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,94 @@ public class CollectionServiceTests
         Assert.NotNull(link);
         Assert.Equal(collectionB.Id, link.CollectionId);
         Assert.False(context.CollectionBooks.Any(cb => cb.CollectionId == collectionA.Id && cb.BookId == book.Id));
+    }
+
+    [Fact]
+    public async Task RenameCollectionAsync_PreservesIdentityAndMembership()
+    {
+        using var context = CreateContext();
+        var user = CreateUser("rename");
+        var book = CreateBook("rename");
+        var collection = new UserCollection { UserId = user.Id, Name = "Before" };
+        context.Users.Add(user);
+        context.Books.Add(book);
+        context.UserCollections.Add(collection);
+        await context.SaveChangesAsync();
+        context.CollectionBooks.Add(new CollectionBook { CollectionId = collection.Id, BookId = book.Id });
+        await context.SaveChangesAsync();
+        var createdAt = collection.CreatedAt;
+        var service = new CollectionService(context, new FakeStorageService());
+
+        var result = await service.RenameCollectionAsync(collection.Id, user.Id, new CreateCollectionDto { Name = "  After  " });
+
+        Assert.NotNull(result);
+        Assert.Equal(collection.Id, result.Id);
+        Assert.Equal(createdAt, result.CreatedAt);
+        Assert.Equal("After", result.Name);
+        Assert.Equal(1, result.BookCount);
+        Assert.Equal("After", (await context.UserCollections.FindAsync(collection.Id))!.Name);
+        Assert.Single(context.CollectionBooks);
+        Assert.Single(context.Books);
+    }
+
+    [Fact]
+    public async Task DeleteCollectionAsync_PreservesBookAndOtherUsersMembership()
+    {
+        using var context = CreateContext();
+        var owner = CreateUser("delete");
+        var other = CreateUser("other");
+        var book = CreateBook("delete");
+        var target = new UserCollection { UserId = owner.Id, Name = "Target" };
+        var empty = new UserCollection { UserId = owner.Id, Name = "Empty" };
+        var independent = new UserCollection { UserId = other.Id, Name = "Independent" };
+        context.Users.AddRange(owner, other);
+        context.Books.Add(book);
+        context.UserCollections.AddRange(target, empty, independent);
+        await context.SaveChangesAsync();
+        context.CollectionBooks.AddRange(
+            new CollectionBook { CollectionId = target.Id, BookId = book.Id },
+            new CollectionBook { CollectionId = independent.Id, BookId = book.Id });
+        await context.SaveChangesAsync();
+        var service = new CollectionService(context, new FakeStorageService());
+
+        Assert.True(await service.DeleteCollectionAsync(target.Id, owner.Id));
+
+        Assert.Null(await context.UserCollections.FindAsync(target.Id));
+        Assert.Equal(2, await context.UserCollections.CountAsync());
+        Assert.Single(context.Books);
+        Assert.Equal(independent.Id, Assert.Single(context.CollectionBooks).CollectionId);
+        Assert.Equal(2, await context.Users.CountAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CollectionMutation_WhenForeignOwner_DoesNotChangeData(bool delete)
+    {
+        using var context = CreateContext();
+        var owner = CreateUser("owner");
+        var other = CreateUser("foreign");
+        var collection = new UserCollection { UserId = owner.Id, Name = "Owned" };
+        context.Users.AddRange(owner, other);
+        context.UserCollections.Add(collection);
+        await context.SaveChangesAsync();
+        var service = new CollectionService(context, new FakeStorageService());
+
+        if (delete)
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.DeleteCollectionAsync(collection.Id, other.Id));
+        else
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.RenameCollectionAsync(collection.Id, other.Id, new CreateCollectionDto { Name = "Wrong" }));
+
+        Assert.Equal("Owned", Assert.Single(context.UserCollections).Name);
+    }
+
+    [Fact]
+    public async Task CollectionMutation_WhenMissing_ReturnsNotFound()
+    {
+        using var context = CreateContext();
+        var service = new CollectionService(context, new FakeStorageService());
+        Assert.Null(await service.RenameCollectionAsync(Guid.NewGuid(), Guid.NewGuid(), new CreateCollectionDto { Name = "Missing" }));
+        Assert.False(await service.DeleteCollectionAsync(Guid.NewGuid(), Guid.NewGuid()));
     }
 
     [Fact]
